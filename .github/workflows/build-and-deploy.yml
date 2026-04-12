@@ -1,0 +1,57 @@
+name: Build and Deploy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'frontend/**'
+      - 'backend/**'
+      - 'docker/**'
+      - 'helm/**'
+      - 'requirements.txt'
+      - '.github/workflows/**'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image-tag: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: docker/Dockerfile
+          push: true
+          tags: |
+            ghcr.io/hankel-ai/ai-news:${{ github.sha }}
+            ghcr.io/hankel-ai/ai-news:latest
+
+  deploy:
+    needs: build
+    runs-on: arc-runner-set
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install helm
+        uses: azure/setup-helm@v4
+
+      - name: Deploy to K3s
+        run: |
+          helm upgrade --install ai-news \
+            ./helm/ai-news \
+            --namespace ai-news \
+            --create-namespace \
+            --set image.tag="${{ github.sha }}" \
+            --wait --timeout 10m

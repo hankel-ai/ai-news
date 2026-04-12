@@ -1,0 +1,6 @@
+apiVersion: v2
+name: ai-news
+description: Self-hosted AI headlines aggregator with configurable sources and schedule
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

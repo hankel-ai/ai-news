@@ -1,0 +1,21 @@
+services:
+  ai-news:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      - ai-news-data:/data
+      - ./seed:/app/seed:ro
+    environment:
+      - AI_NEWS_DB_PATH=/data/ainews.db
+      - AI_NEWS_DATA_DIR=/data
+      - AI_NEWS_SEED_PATH=/app/seed/sources.json
+      - AI_NEWS_EMBED_ALLOWED_ORIGINS=https://hankel.ai,https://www.hankel.ai,http://localhost:8000
+      - AI_NEWS_LOG_LEVEL=INFO
+      - TZ=America/New_York
+    restart: unless-stopped
+
+volumes:
+  ai-news-data:

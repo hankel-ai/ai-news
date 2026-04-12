@@ -1,0 +1,30 @@
+AI News has been deployed!
+
+{{- if .Values.ingress.enabled }}
+
+Access the site at: https://{{ .Values.ingress.host }}/
+
+The TLS certificate will be issued by cert-manager ({{ .Values.ingress.annotations | default dict | get "cert-manager.io/cluster-issuer" "letsencrypt" }}).
+Check certificate status:
+
+  kubectl -n {{ .Release.Namespace }} get certificate
+
+{{- else }}
+
+Port-forward to access locally:
+
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "ai-news.fullname" . }} 8000:{{ .Values.service.port }}
+  open http://localhost:8000
+
+{{- end }}
+
+Check pod status:
+
+  kubectl -n {{ .Release.Namespace }} get pods,pvc,ingress
+
+View logs:
+
+  kubectl -n {{ .Release.Namespace }} logs deploy/{{ include "ai-news.fullname" . }} -f
+
+The SQLite database lives on the PVC at {{ .Values.persistence.mountPath }}/ainews.db.
+Source configuration and schedule frequency can be changed from the Settings tab.

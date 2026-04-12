@@ -1,0 +1,71 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "ai-news.fullname" . }}
+  labels:
+    {{- include "ai-news.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "ai-news.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "ai-news.selectorLabels" . | nindent 8 }}
+    spec:
+      securityContext:
+        runAsUser: 1000
+        fsGroup: 1000
+      containers:
+        - name: ai-news
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - containerPort: 8000
+              name: http
+              protocol: TCP
+          env:
+            - name: AI_NEWS_DB_PATH
+              value: "{{ .Values.persistence.mountPath }}/ainews.db"
+            - name: AI_NEWS_DATA_DIR
+              value: {{ .Values.persistence.mountPath | quote }}
+            - name: AI_NEWS_SEED_PATH
+              value: /app/seed/sources.json
+            - name: AI_NEWS_EMBED_ALLOWED_ORIGINS
+              value: {{ join "," .Values.embed.allowedOrigins | quote }}
+            - name: TZ
+              value: {{ .Values.timezone | quote }}
+          startupProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            failureThreshold: 12
+            periodSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            periodSeconds: 30
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: {{ .Values.persistence.mountPath }}
+            - name: seed
+              mountPath: /app/seed
+              readOnly: true
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ include "ai-news.fullname" . }}
+        - name: seed
+          configMap:
+            name: {{ include "ai-news.fullname" . }}-seed

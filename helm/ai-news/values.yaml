@@ -1,0 +1,36 @@
+image:
+  repository: ghcr.io/hankel-ai/ai-news
+  tag: latest
+  pullPolicy: IfNotPresent
+
+timezone: America/New_York
+
+service:
+  type: ClusterIP
+  port: 8000
+
+ingress:
+  enabled: true
+  className: nginx
+  host: news.hankel.ai
+  tlsSecretName: ai-news-tls
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-hankel
+
+persistence:
+  storageClass: longhorn
+  size: 2Gi
+  mountPath: /data
+
+embed:
+  allowedOrigins:
+    - https://hankel.ai
+    - https://www.hankel.ai
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi

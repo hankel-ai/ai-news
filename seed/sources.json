@@ -1,0 +1,119 @@
+[
+  {
+    "key": "hackernews",
+    "name": "Hacker News",
+    "type": "hackernews_api",
+    "enabled": true,
+    "max_stories": 5,
+    "min_score": 50,
+    "keywords": ["AI","LLM","GPT","Claude","Gemini","machine learning","neural","transformer","agentic","coding agent","model release","open source model","fine-tune","RAG","diffusion","Anthropic","OpenAI","DeepMind","Mistral","Meta AI","Llama","deep learning"]
+  },
+  {
+    "key": "techmeme",
+    "name": "Techmeme",
+    "type": "html_scraper",
+    "url": "https://www.techmeme.com/",
+    "enabled": true,
+    "max_stories": 4,
+    "keywords": ["AI","artificial intelligence","LLM","GPT","Claude","Gemini","machine learning","OpenAI","Anthropic","DeepMind","model","neural","agentic"]
+  },
+  {
+    "key": "implicator",
+    "name": "implicator.ai",
+    "type": "html_scraper",
+    "url": "https://implicator.ai",
+    "enabled": true,
+    "max_stories": 4
+  },
+  {
+    "key": "ars_ai",
+    "name": "Ars Technica",
+    "type": "rss",
+    "url": "https://arstechnica.com/ai/feed/",
+    "enabled": true,
+    "max_stories": 3
+  },
+  {
+    "key": "mit_tech_review_ai",
+    "name": "MIT Technology Review",
+    "type": "rss",
+    "url": "https://www.technologyreview.com/topic/artificial-intelligence/feed",
+    "enabled": true,
+    "max_stories": 2
+  },
+  {
+    "key": "reddit_localllama",
+    "name": "r/LocalLLaMA",
+    "type": "reddit_json",
+    "subreddit": "LocalLLaMA",
+    "sort": "hot",
+    "enabled": true,
+    "max_stories": 3,
+    "min_score": 100
+  },
+  {
+    "key": "reddit_machinelearning",
+    "name": "r/MachineLearning",
+    "type": "reddit_json",
+    "subreddit": "MachineLearning",
+    "sort": "hot",
+    "enabled": true,
+    "max_stories": 2,
+    "min_score": 50
+  },
+  {
+    "key": "openai_blog",
+    "name": "OpenAI Blog",
+    "type": "rss",
+    "url": "https://openai.com/blog/rss.xml",
+    "enabled": true,
+    "max_stories": 2
+  },
+  {
+    "key": "claude_blog",
+    "name": "Claude Blog",
+    "type": "claude_blog",
+    "enabled": true,
+    "max_stories": 3
+  },
+  {
+    "key": "google_ai_blog",
+    "name": "Google AI Blog",
+    "type": "rss",
+    "url": "https://blog.google/technology/ai/rss/",
+    "enabled": true,
+    "max_stories": 2
+  },
+  {
+    "key": "huggingface_blog",
+    "name": "Hugging Face",
+    "type": "rss",
+    "url": "https://huggingface.co/blog/feed.xml",
+    "enabled": true,
+    "max_stories": 2
+  },
+  {
+    "key": "simon_willison",
+    "name": "Simon Willison",
+    "type": "rss",
+    "url": "https://simonwillison.net/atom/everything/",
+    "enabled": true,
+    "max_stories": 2
+  },
+  {
+    "key": "the_verge_ai",
+    "name": "The Verge",
+    "type": "rss",
+    "url": "https://www.theverge.com/rss/ai-artificial-intelligence/index.xml",
+    "enabled": true,
+    "max_stories": 2
+  },
+  {
+    "key": "thomas_wiegold",
+    "name": "Thomas Wiegold",
+    "type": "rss",
+    "url": "https://thomas-wiegold.com/blog/feed/",
+    "enabled": true,
+    "max_stories": 2
+  }
+]
