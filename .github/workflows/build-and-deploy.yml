@@ -40,7 +40,7 @@ jobs:
 
   deploy:
     needs: build
-    runs-on: arc-runner-set
+    runs-on: arc-runner-set-ainews
     steps:
       - uses: actions/checkout@v6
 
