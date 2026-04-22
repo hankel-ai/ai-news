@@ -11,11 +11,15 @@ function timeAgo(iso: string): string {
   return `${days}d ago`;
 }
 
-const PLACEHOLDER =
-  "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='200' fill='%231e293b'%3E%3Crect width='400' height='200'/%3E%3Ctext x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' font-family='sans-serif' font-size='14' fill='%2394a3b8'%3ENo image%3C/text%3E%3C/svg%3E";
+function sourceHue(name: string): number {
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = name.charCodeAt(i) + ((h << 5) - h);
+  return Math.abs(h) % 360;
+}
 
 export default function StoryCard({ story }: { story: StoryItem }) {
-  const [imgSrc, setImgSrc] = useState(story.image_url || PLACEHOLDER);
+  const [imgFailed, setImgFailed] = useState(false);
+  const showImage = story.image_url && !imgFailed;
 
   return (
     <a
@@ -25,13 +29,26 @@ export default function StoryCard({ story }: { story: StoryItem }) {
       className="group flex flex-col bg-hankel-surface rounded-lg overflow-hidden hover:ring-1 hover:ring-hankel-accent transition"
     >
       <div className="relative w-full aspect-[2/1] bg-hankel-bg overflow-hidden">
-        <img
-          src={imgSrc}
-          alt=""
-          loading="lazy"
-          onError={() => setImgSrc(PLACEHOLDER)}
-          className="w-full h-full object-cover"
-        />
+        {showImage ? (
+          <img
+            src={story.image_url!}
+            alt=""
+            loading="lazy"
+            onError={() => setImgFailed(true)}
+            className="w-full h-full object-cover"
+          />
+        ) : (
+          <div
+            className="w-full h-full flex items-center justify-center"
+            style={{
+              background: `linear-gradient(135deg, hsl(${sourceHue(story.source_name)}, 35%, 20%) 0%, hsl(${sourceHue(story.source_name) + 40}, 30%, 15%) 100%)`,
+            }}
+          >
+            <span className="text-3xl font-bold text-white/30 select-none">
+              {story.source_name}
+            </span>
+          </div>
+        )}
       </div>
       <div className="flex flex-col gap-1 p-3 flex-1">
         <h3 className="text-sm font-medium leading-snug text-hankel-text group-hover:text-hankel-accent transition line-clamp-2">
