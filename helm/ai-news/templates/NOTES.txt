@@ -4,7 +4,7 @@ AI News has been deployed!
 
 Access the site at: https://{{ .Values.ingress.host }}/
 
-The TLS certificate will be issued by cert-manager ({{ .Values.ingress.annotations | default dict | get "cert-manager.io/cluster-issuer" "letsencrypt" }}).
+The TLS certificate will be issued by cert-manager ({{ get (.Values.ingress.annotations | default dict) "cert-manager.io/cluster-issuer" | default "letsencrypt" }}).
 Check certificate status:
 
   kubectl -n {{ .Release.Namespace }} get certificate
