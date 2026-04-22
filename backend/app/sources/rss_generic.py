@@ -57,6 +57,15 @@ async def fetch_rss(config: dict) -> list[Story]:
                 if lnk.get("type", "").startswith("image/"):
                     image_url = lnk.get("href")
                     break
+        if not image_url:
+            for enc in entry.get("enclosures", []):
+                if enc.get("type", "").startswith("image/") and enc.get("href"):
+                    image_url = enc["href"]
+                    break
+        if not image_url and raw_summary:
+            img_tag = BeautifulSoup(raw_summary, "html.parser").find("img", src=True)
+            if img_tag and img_tag["src"].startswith("http"):
+                image_url = img_tag["src"]
 
         stories.append(Story(
             title=title,
