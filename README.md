@@ -23,6 +23,8 @@ npm run dev
 
 CI builds `ghcr.io/hankel-ai/ai-news:${sha}` on every push to `main`, then runs `helm upgrade --install` via a self-hosted in-cluster runner. See `.github/workflows/build-and-deploy.yml` and `helm/ai-news/`.
 
+**First-time cluster setup (once per cluster):** the runner's ServiceAccount has no permissions by default, so the target namespace and an admin RoleBinding must pre-exist. See `CLAUDE.md` → "One-time cluster setup" for the two `kubectl` commands.
+
 ## Configuration
 
 Everything is configurable from the **Settings** tab in the running app — sources, schedule frequency, retention, display options. First-run defaults are seeded from `helm/ai-news/templates/configmap-seed.yaml`.

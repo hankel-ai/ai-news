@@ -52,6 +52,5 @@ jobs:
           helm upgrade --install ai-news \
             ./helm/ai-news \
             --namespace ai-news \
-            --create-namespace \
             --set image.tag="${{ github.sha }}" \
             --wait --timeout 10m

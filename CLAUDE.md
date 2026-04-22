@@ -11,7 +11,7 @@ Originated as a pivot from `../ai-podcast` — the source-fetching pipeline is r
 - **Storage**: SQLite (WAL mode) on a Longhorn RWO PVC at `/data/ainews.db`
 - **Container**: Multi-stage Docker build (node:20-alpine build → python:3.11-slim runtime)
 - **Deployment**: Helm chart → K3s, nginx ingress, cert-manager with `letsencrypt-hankel` ClusterIssuer at `news.hankel.ai`
-- **CI/CD**: GitHub Actions (`ubuntu-latest` build → `arc-runner-set` deploy), image at `ghcr.io/hankel-ai/ai-news`
+- **CI/CD**: GitHub Actions (`ubuntu-latest` build → `arc-runner-set-ainews` deploy), image at `ghcr.io/hankel-ai/ai-news`
 
 ## Architecture
 - **Single-replica constraint**: APScheduler + SQLite file lock require exactly 1 pod. Deployment strategy is `Recreate` (not RollingUpdate) to prevent double-scheduling during upgrades.
@@ -60,10 +60,23 @@ pytest backend/tests
 # Helm
 helm lint ./helm/ai-news
 helm template test ./helm/ai-news
-helm upgrade --install ai-news ./helm/ai-news -n ai-news --create-namespace
+helm upgrade --install ai-news ./helm/ai-news -n ai-news
 ```
 
+## One-time cluster setup (first deploy of this repo)
+The CI deploy runs with a namespace-scoped ServiceAccount, so the namespace and RoleBinding must pre-exist. Per-repo, run once:
+```bash
+kubectl create namespace ai-news
+kubectl create rolebinding runner-deploy -n ai-news \
+  --clusterrole=admin \
+  --serviceaccount=arc-runners:arc-runner-set-ainews-gha-rs-no-permission
+```
+After that, every `git push` to main builds + deploys on its own. Don't delete the namespace casually (see Known Gotchas on Let's Encrypt).
+
 ## Known Gotchas
+- **CI deploy runner is per-repo**: `hankel-ai` is a personal GitHub account, which cannot have account-level self-hosted runners. Each repo needs its own AutoscalingRunnerSet. For this repo: `arc-runner-set-ainews` in the `arc-runners` namespace (installed via the `gha-runner-scale-set` chart, scoped to `https://github.com/hankel-ai/ai-news`). The workflow's `runs-on:` on the deploy job must match that name. Do NOT set `runnerScaleSetName` to reuse a name from another scale set in the same namespace — the chart-managed `*-gha-rs-no-permission` ServiceAccount is keyed by scale-set name and will collide.
+- **Runner RBAC is namespace-scoped**: the chart-created runner SA (`arc-runner-set-ainews-gha-rs-no-permission`) gets the built-in `admin` ClusterRole via a RoleBinding in the `ai-news` namespace only — not cluster-admin. Consequence: the workflow cannot use `--create-namespace` (that's a cluster-scoped API call). The namespace is pre-provisioned manually (see One-time cluster setup above).
+- **Fine-grained PAT must include this repo**: the `github-pat` Secret in `arc-runners` is a fine-grained PAT. When adding a new repo under `hankel-ai`, edit the PAT at github.com/settings/personal-access-tokens to grant **Actions: Read and write** + **Administration: Read and write** on the new repo. Otherwise the controller gets `403 Resource not accessible by personal access token` on runner registration.
 - **Single replica**: never set `replicas > 1` or switch to `RollingUpdate`. SQLite file lock + APScheduler cannot handle two pods.
 - **Let's Encrypt rate limits**: during initial iteration, set `ingress.enabled=false` and use `kubectl port-forward` instead of hitting the real `letsencrypt-hankel` ClusterIssuer repeatedly.
 - **HTML scrapers break silently**: techmeme + implicator are brittle. Check the `source_health` table / Settings diagnostics regularly.
