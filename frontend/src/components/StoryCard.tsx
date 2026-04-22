@@ -113,7 +113,6 @@ export default function StoryCard({ story }: { story: StoryItem }) {
 
       {showPopup && (
         <PreviewPopup
-          storyId={story.id}
           url={story.url}
           title={story.title}
           sourceName={story.source_name}

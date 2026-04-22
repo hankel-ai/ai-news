@@ -1,9 +1,10 @@
-import asyncio
 import logging
+import re
+from urllib.parse import urlparse
 
 import httpx
-import trafilatura
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import Response
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -70,44 +71,57 @@ async def list_stories(
     }
 
 
-_CONTENT_LIMIT = 15000
+_STRIP_HEADERS = {
+    "x-frame-options",
+    "content-security-policy",
+    "content-security-policy-report-only",
+}
+
+_PROXY_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
 
 
-@router.get("/stories/{story_id}/content")
-async def get_story_content(
-    story_id: int,
-    session: AsyncSession = Depends(get_session),
-):
-    story = await session.get(Story, story_id)
-    if not story:
-        raise HTTPException(404, "Story not found")
-
-    if story.article_content:
-        return {"content": story.article_content, "url": story.url}
+@router.get("/proxy")
+async def proxy_page(url: str = Query(...)):
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https"):
+        raise HTTPException(400, "Invalid URL scheme")
 
     try:
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-        }
-        async with httpx.AsyncClient(headers=headers) as client:
-            resp = await client.get(story.url, follow_redirects=True, timeout=15)
-            resp.raise_for_status()
-        html = resp.text
-        text = await asyncio.to_thread(
-            trafilatura.extract,
-            html,
-            include_comments=False,
-            include_tables=True,
-            include_links=True,
-            output_format="html",
-        )
-        content = (text or "")[:_CONTENT_LIMIT]
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(
+                url,
+                headers={"User-Agent": _PROXY_UA},
+                follow_redirects=True,
+                timeout=15,
+            )
     except Exception as e:
-        logger.warning("content fetch failed for story %d: %s", story_id, e)
-        content = ""
+        logger.warning("proxy fetch failed for %s: %s", url, e)
+        raise HTTPException(502, "Failed to fetch page")
 
-    if content:
-        story.article_content = content
-        await session.commit()
+    content_type = resp.headers.get("content-type", "text/html")
+    out_headers = {}
+    for k, v in resp.headers.items():
+        if k.lower() not in _STRIP_HEADERS:
+            out_headers[k] = v
+    out_headers.pop("transfer-encoding", None)
+    out_headers.pop("content-encoding", None)
+    out_headers.pop("content-length", None)
 
-    return {"content": content, "url": story.url}
+    body = resp.content
+    if "text/html" in content_type:
+        base_tag = f'<base href="{url}">'
+        text = resp.text
+        head_match = re.search(r"<head[^>]*>", text, re.IGNORECASE)
+        if head_match:
+            insert_pos = head_match.end()
+            text = text[:insert_pos] + base_tag + text[insert_pos:]
+        else:
+            text = base_tag + text
+        body = text.encode("utf-8", errors="replace")
+
+    return Response(
+        content=body,
+        status_code=resp.status_code,
+        headers=out_headers,
+        media_type=content_type,
+    )
