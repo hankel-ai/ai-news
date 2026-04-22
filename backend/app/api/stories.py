@@ -1,10 +1,16 @@
-from fastapi import APIRouter, Depends, Query
+import asyncio
+import logging
+
+import httpx
+import trafilatura
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.engine import get_session
 from app.db.models import Story
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["stories"])
 
 
@@ -62,3 +68,46 @@ async def list_stories(
             for r in rows
         ],
     }
+
+
+_CONTENT_LIMIT = 15000
+
+
+@router.get("/stories/{story_id}/content")
+async def get_story_content(
+    story_id: int,
+    session: AsyncSession = Depends(get_session),
+):
+    story = await session.get(Story, story_id)
+    if not story:
+        raise HTTPException(404, "Story not found")
+
+    if story.article_content:
+        return {"content": story.article_content, "url": story.url}
+
+    try:
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+        }
+        async with httpx.AsyncClient(headers=headers) as client:
+            resp = await client.get(story.url, follow_redirects=True, timeout=15)
+            resp.raise_for_status()
+        html = resp.text
+        text = await asyncio.to_thread(
+            trafilatura.extract,
+            html,
+            include_comments=False,
+            include_tables=True,
+            include_links=True,
+            output_format="html",
+        )
+        content = (text or "")[:_CONTENT_LIMIT]
+    except Exception as e:
+        logger.warning("content fetch failed for story %d: %s", story_id, e)
+        content = ""
+
+    if content:
+        story.article_content = content
+        await session.commit()
+
+    return {"content": content, "url": story.url}

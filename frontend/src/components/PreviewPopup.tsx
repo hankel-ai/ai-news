@@ -1,23 +1,45 @@
 import { createPortal } from "react-dom";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 interface Props {
+  storyId: number;
   url: string;
   title: string;
+  sourceName: string;
   onClose: () => void;
   onMouseEnter: () => void;
   onMouseLeave: () => void;
 }
 
 export default function PreviewPopup({
+  storyId,
   url,
   title,
+  sourceName,
   onClose,
   onMouseEnter,
   onMouseLeave,
 }: Props) {
-  const [loaded, setLoaded] = useState(false);
-  const [iframeError, setIframeError] = useState(false);
+  const [content, setContent] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`/api/stories/${storyId}/content`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (!cancelled) setContent(data.content || "");
+      })
+      .catch(() => {
+        if (!cancelled) setContent("");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [storyId]);
 
   return createPortal(
     <div
@@ -27,10 +49,15 @@ export default function PreviewPopup({
     >
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
 
-      <div className="relative w-[85vw] h-[80vh] max-w-[1200px] bg-hankel-bg rounded-xl shadow-2xl overflow-hidden flex flex-col">
+      <div className="relative w-[85vw] h-[80vh] max-w-[900px] bg-hankel-bg rounded-xl shadow-2xl overflow-hidden flex flex-col">
         <div className="flex items-center justify-between px-4 py-2 bg-hankel-surface border-b border-hankel-bg shrink-0">
-          <span className="text-sm text-hankel-muted truncate mr-4">{title}</span>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 min-w-0 mr-4">
+            <span className="text-xs text-hankel-accent shrink-0">
+              {sourceName}
+            </span>
+            <span className="text-sm text-hankel-muted truncate">{title}</span>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
             <button
               onClick={(e) => {
                 e.stopPropagation();
@@ -53,15 +80,15 @@ export default function PreviewPopup({
           </div>
         </div>
 
-        <div className="relative flex-1">
-          {!loaded && !iframeError && (
-            <div className="absolute inset-0 flex items-center justify-center text-hankel-muted text-sm">
-              Loading preview...
-            </div>
+        <div className="flex-1 overflow-y-auto px-8 py-6">
+          {loading && (
+            <p className="text-hankel-muted text-sm text-center py-12">
+              Loading article...
+            </p>
           )}
-          {iframeError ? (
-            <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 text-hankel-muted">
-              <p>Preview unavailable for this site</p>
+          {!loading && !content && (
+            <div className="flex flex-col items-center justify-center gap-4 py-12 text-hankel-muted">
+              <p>Could not extract article content</p>
               <button
                 onClick={() => {
                   window.open(url, "_blank", "noopener,noreferrer");
@@ -72,14 +99,11 @@ export default function PreviewPopup({
                 Open in new tab
               </button>
             </div>
-          ) : (
-            <iframe
-              src={url}
-              className="w-full h-full border-0"
-              onLoad={() => setLoaded(true)}
-              onError={() => setIframeError(true)}
-              sandbox="allow-same-origin allow-scripts allow-popups"
-              title="Article preview"
+          )}
+          {!loading && content && (
+            <article
+              className="reader-view text-hankel-text/90 text-sm leading-relaxed"
+              dangerouslySetInnerHTML={{ __html: content }}
             />
           )}
         </div>
