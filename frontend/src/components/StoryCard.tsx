@@ -15,7 +15,6 @@ const PLACEHOLDER =
   "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='200' fill='%231e293b'%3E%3Crect width='400' height='200'/%3E%3Ctext x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' font-family='sans-serif' font-size='14' fill='%2394a3b8'%3ENo image%3C/text%3E%3C/svg%3E";
 
 export default function StoryCard({ story }: { story: StoryItem }) {
-  const ts = story.published_at || story.first_seen_at;
   const [imgSrc, setImgSrc] = useState(story.image_url || PLACEHOLDER);
 
   return (
@@ -41,7 +40,7 @@ export default function StoryCard({ story }: { story: StoryItem }) {
         <div className="flex items-center gap-1.5 text-xs text-hankel-muted mt-auto pt-1">
           <span>{story.source_name}</span>
           <span>&middot;</span>
-          <span>{timeAgo(ts)}</span>
+          <span>{timeAgo(story.first_seen_at)}</span>
           {story.score != null && (
             <>
               <span>&middot;</span>

@@ -37,9 +37,7 @@ async def list_stories(
 
     total = (await session.execute(count_stmt)).scalar_one()
 
-    stmt = stmt.order_by(
-        func.coalesce(Story.published_at, Story.first_seen_at).desc()
-    ).offset(offset).limit(limit)
+    stmt = stmt.order_by(Story.first_seen_at.desc()).offset(offset).limit(limit)
 
     rows = (await session.execute(stmt)).scalars().all()
 
