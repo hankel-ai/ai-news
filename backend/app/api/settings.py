@@ -16,7 +16,6 @@ DEFAULTS = {
     "enrich_content": "false",
     "display_group_by_date": "true",
     "display_page_size": "50",
-    "max_stories_per_fetch": "100",
     "timezone": "America/New_York",
 }
 

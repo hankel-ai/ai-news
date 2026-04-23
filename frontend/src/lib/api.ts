@@ -57,7 +57,6 @@ export interface SettingsMap {
   enrich_content: boolean;
   display_group_by_date: boolean;
   display_page_size: number;
-  max_stories_per_fetch: number;
   timezone: string;
   [key: string]: unknown;
 }

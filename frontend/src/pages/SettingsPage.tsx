@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api, type SettingsMap, type SourceItem, type SourceHealthItem } from "../lib/api";
 
 function StatusBadge({ status }: { status: string }) {
@@ -21,9 +21,9 @@ function SourcesSection() {
   const { data: healthData } = useQuery({ queryKey: ["sourceHealth"], queryFn: api.getSourceHealth });
   const { data: runsData } = useQuery({ queryKey: ["fetchRuns"], queryFn: () => api.getFetchRuns(10) });
 
-  const toggleMutation = useMutation({
-    mutationFn: ({ id, enabled }: { id: number; enabled: boolean }) =>
-      api.updateSource(id, { enabled }),
+  const updateMutation = useMutation({
+    mutationFn: ({ id, body }: { id: number; body: Partial<SourceItem> }) =>
+      api.updateSource(id, body),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["sources"] }),
   });
 
@@ -63,7 +63,7 @@ function SourcesSection() {
                 <tr key={s.id} className="border-b border-hankel-surface/50">
                   <td className="py-2 pr-3">
                     <button
-                      onClick={() => toggleMutation.mutate({ id: s.id, enabled: !s.enabled })}
+                      onClick={() => updateMutation.mutate({ id: s.id, body: { enabled: !s.enabled } })}
                       className={`w-8 h-5 rounded-full transition ${s.enabled ? "bg-hankel-accent" : "bg-gray-600"} relative`}
                     >
                       <span className={`block w-3.5 h-3.5 bg-white rounded-full absolute top-0.5 transition-all ${s.enabled ? "left-4" : "left-0.5"}`} />
@@ -71,7 +71,12 @@ function SourcesSection() {
                   </td>
                   <td className="py-2 pr-3 font-medium">{s.name}</td>
                   <td className="py-2 pr-3 text-hankel-muted">{s.type}</td>
-                  <td className="py-2 pr-3 text-hankel-muted">{s.max_stories}</td>
+                  <td className="py-2 pr-3">
+                    <MaxStoriesInput
+                      value={s.max_stories}
+                      onCommit={(v) => updateMutation.mutate({ id: s.id, body: { max_stories: v } })}
+                    />
+                  </td>
                   <td className="py-2 pr-3">
                     {h ? <StatusBadge status={h.status} /> : <span className="text-hankel-muted text-xs">-</span>}
                   </td>
@@ -185,16 +190,6 @@ function SettingsForm() {
             className="input-field"
           />
         </Field>
-        <Field label="Max stories per fetch">
-          <input
-            type="number"
-            min={10}
-            max={500}
-            value={merged.max_stories_per_fetch}
-            onChange={(e) => handleChange("max_stories_per_fetch", Number(e.target.value))}
-            className="input-field"
-          />
-        </Field>
         <Field label="Enrich content">
           <Toggle
             checked={merged.enrich_content}
@@ -219,6 +214,36 @@ function SettingsForm() {
         {saved && <span className="text-sm text-green-400">Saved!</span>}
       </div>
     </section>
+  );
+}
+
+function MaxStoriesInput({ value, onCommit }: { value: number; onCommit: (v: number) => void }) {
+  const [draft, setDraft] = useState(String(value));
+  useEffect(() => setDraft(String(value)), [value]);
+
+  function commit() {
+    const n = Number(draft);
+    if (!Number.isFinite(n) || n < 1 || n === value) {
+      setDraft(String(value));
+      return;
+    }
+    onCommit(n);
+  }
+
+  return (
+    <input
+      type="number"
+      min={1}
+      max={100}
+      value={draft}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+        if (e.key === "Escape") setDraft(String(value));
+      }}
+      className="w-16 px-2 py-0.5 bg-hankel-surface rounded text-sm text-hankel-muted focus:outline-none focus:ring-1 focus:ring-hankel-accent"
+    />
   );
 }
 
