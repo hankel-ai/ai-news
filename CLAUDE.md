@@ -10,7 +10,7 @@ Originated as a pivot from `../ai-podcast` — the source-fetching pipeline is r
 - **Frontend**: React 18 + TypeScript + Vite, TanStack Query, TailwindCSS
 - **Storage**: SQLite (WAL mode) on a Longhorn RWO PVC at `/data/ainews.db`
 - **Container**: Multi-stage Docker build (node:20-alpine build → python:3.11-slim runtime)
-- **Deployment**: Helm chart → K3s, nginx ingress, cert-manager with `letsencrypt-hankel` ClusterIssuer at `news.hankel.ai`
+- **Deployment**: Helm chart → K3s, Traefik ingress, cert-manager with `letsencrypt-hankel` ClusterIssuer at `news.hankel.ai`
 - **CI/CD**: GitHub Actions (`ubuntu-latest` build → `arc-runner-set-ainews` deploy), image at `ghcr.io/hankel-ai/ai-news`
 
 ## Architecture
@@ -84,7 +84,7 @@ After that, every `git push` to main builds + deploys on its own. Don't delete t
 
 ## Related Projects
 - `../ai-podcast` — original source; kept unchanged as the podcast version
-- `../pihole-helm` — Helm chart conventions used here (`_helpers.tpl`, `Recreate` strategy, lean values, nginx ingress + cert-manager)
+- `../pihole-helm` — Helm chart conventions used here (`_helpers.tpl`, `Recreate` strategy, lean values, Traefik ingress + cert-manager)
 - `../container-image-compare` — CI/CD pattern used here (`ubuntu-latest` → `arc-runner-set`, `docker/build-push-action@v7`)
 - `../hankel-ai.github.io` — portfolio that embeds `/embed` via a Hugo shortcode
 - `../cert-issuer-hankel` — defines the `letsencrypt-hankel` ClusterIssuer

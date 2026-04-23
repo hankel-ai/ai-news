@@ -11,7 +11,7 @@ service:
 
 ingress:
   enabled: true
-  className: nginx
+  className: traefik
   host: news.hankel.ai
   tlsSecretName: ai-news-tls
   annotations:
