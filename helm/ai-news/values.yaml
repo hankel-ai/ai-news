@@ -34,3 +34,10 @@ resources:
   limits:
     cpu: 500m
     memory: 512Mi
+
+llm:
+  provider: ollama
+  model: llama3.2
+  baseUrl: "http://ollama.ollama:11434"
+  apiKeySecretName: ""
+  apiKeySecretKey: api-key
