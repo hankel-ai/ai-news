@@ -172,9 +172,8 @@ async def run_once(
                 provider_name=llm_provider, model=llm_model,
                 base_url=llm_base_url, api_key=llm_api_key,
             )
-            from sqlalchemy import select as sa_select
             unanalyzed = await session.execute(
-                sa_select(StoryModel.id).where(
+                select(StoryModel.id).where(
                     StoryModel.analyzed_at.is_(None),
                     StoryModel.first_seen_at >= run.started_at,
                 )

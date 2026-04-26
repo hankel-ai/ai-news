@@ -23,14 +23,14 @@ DEFAULTS = {
     "llm_model": "llama3.2",
     "llm_base_url": "",
     "llm_api_key": "",
-    "analysis_enabled": True,
-    "breaking_threshold": 3,
+    "analysis_enabled": "true",
+    "breaking_threshold": "3",
     # display settings
-    "display_expand_summaries": False,
+    "display_expand_summaries": "false",
     "display_sort_by": "relevance",
-    "display_score_threshold": 0,
+    "display_score_threshold": "0",
     # notification settings
-    "notifications_enabled": True,
+    "notifications_enabled": "true",
 }
 
 

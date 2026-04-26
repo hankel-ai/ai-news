@@ -28,8 +28,8 @@ backend/app/
   config.py            env-only: DB_PATH, DATA_DIR, SEED_PATH, EMBED_ALLOWED_ORIGINS
   security.py          CSP frame-ancestors middleware
   scheduler.py         init_scheduler, reschedule_from_db, run_fetch_job
-  db/                  engine, models, migrations, migrations_sql/{001_init,002_add_image_url,003_add_viewed_at}.sql
-  api/                 stories, sources, settings, fetch, health, embed
+  db/                  engine, models, migrations, migrations_sql/{001_init,002_add_image_url,003_add_viewed_at,004_add_intelligence}.sql
+  api/                 stories, sources, settings, fetch, health, embed, alerts
   pipeline/            aggregator (DB-driven run_once), persist, health_writer
   sources/             copied from ai-podcast (hackernews, rss_generic, reddit, techmeme, implicator, claude_blog, base)
   utils/               dedup, content_scraper, image_extractor, logging_setup
@@ -83,6 +83,9 @@ After that, every `git push` to main builds + deploys on its own. Don't delete t
 - **Content scraper thread pool**: `utils/content_scraper.py` was rewritten from ai-podcast to use `asyncio.to_thread` instead of a module-level `ThreadPoolExecutor` (which leaks in long-lived servers).
 - **Hover preview disabled on mobile**: `StoryCard.tsx` uses `matchMedia("(hover: hover)")` to detect touch devices and skip hover popup entirely. Desktop users can toggle it off via the `hover_preview_enabled` setting.
 - **Viewed/read tracking**: `stories.viewed_at` column tracks when an article was read. `PUT /api/stories/{id}/view` marks it. Cards fade to 60% opacity when viewed.
+- **AI analysis pipeline**: `pipeline/analyzer.py` sends unanalyzed stories to an LLM (Ollama/Anthropic/LiteLLM) for scoring, summarization, and topic tagging. Integrated into the fetch pipeline (`aggregator.py`) and triggerable manually via `POST /api/analyze`. Settings control `analysis_enabled`, `llm_provider`, `llm_model`, `llm_base_url`, `llm_api_key`, `breaking_threshold`. Helm chart exposes `llm.*` values (`provider`, `model`, `baseUrl`, `apiKeySecretName`, `apiKeySecretKey`) which map to `AI_NEWS_LLM_*` env vars; API key uses `secretKeyRef` when `apiKeySecretName` is non-empty.
+- **Stories API sort/filter**: `GET /api/stories` supports `sort_by` (relevance|newest|source), `min_score`, `topics` (comma-separated), `unread_only`. Response items include `ai_summary`, `relevance_score`, `topics` (parsed list), `analyzed_at`.
+- **Alerts API**: `GET /api/alerts/pending` returns unacknowledged, unexpired trends. `PUT /api/alerts/{id}/ack` marks a trend as notified. Trend rows are created by the analyzer when it detects breaking/trending patterns.
 - **Per-source reconciliation**: `POST /api/sources/{id}/reconcile` fetches all available articles from a source (bypassing keyword/score filters via `skip_keyword_filter` config flag) and compares against DB. Accessible from Settings > Sources > Reconcile button.
 - **Image extraction pipeline**: `image_extractor.py` checks og:image → twitter:image → ld+json → article/figure tags → generic img tags → Google favicon fallback. Reddit fetcher unescapes HTML entities in preview URLs and extracts images from self-post HTML. Techmeme fetcher extracts inline cluster images.
 

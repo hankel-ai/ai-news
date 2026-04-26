@@ -55,7 +55,7 @@ async def trigger_analyze(session: AsyncSession = Depends(get_session)):
         breaking_threshold = 3
 
     result = await session.execute(
-        select(Story.id).where(Story.analyzed_at.is_(None))
+        select(Story.id).where(Story.analyzed_at.is_(None)).limit(200)
     )
     unanalyzed_ids = [row[0] for row in result.fetchall()]
 
@@ -66,7 +66,10 @@ async def trigger_analyze(session: AsyncSession = Depends(get_session)):
         provider_name=llm_provider, model=llm_model,
         base_url=llm_base_url, api_key=llm_api_key,
     )
-    await analyze_stories(session, unanalyzed_ids, provider, breaking_threshold)
-    await session.commit()
+    try:
+        await analyze_stories(session, unanalyzed_ids, provider, breaking_threshold)
+        await session.commit()
+    except Exception as e:
+        return {"analyzed": 0, "error": str(e)}
 
     return {"analyzed": len(unanalyzed_ids), "message": f"Analyzed {len(unanalyzed_ids)} stories"}

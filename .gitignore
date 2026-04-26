@@ -27,3 +27,4 @@ backend/app/static/
 Thumbs.db
 .idea/
 .vscode/
+.superpowers/

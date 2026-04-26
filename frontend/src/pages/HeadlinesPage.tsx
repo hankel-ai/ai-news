@@ -90,7 +90,7 @@ export default function HeadlinesPage() {
   });
 
   // Load persisted display preferences
-  useMemo(() => {
+  useEffect(() => {
     if (!settingsQ.data) return;
     const s = settingsQ.data as SettingsMap;
     if (s.display_expand_summaries) setExpandAll(true);
@@ -104,13 +104,15 @@ export default function HeadlinesPage() {
   useEffect(() => {
     if (!alerts.length) return;
     if (!("Notification" in window) || Notification.permission !== "granted") return;
+    const notificationsEnabled = (settingsQ.data as any)?.notifications_enabled;
+    if (notificationsEnabled === false || notificationsEnabled === "false") return;
     for (const alert of alerts) {
       if (alert.severity !== "breaking") continue;
       if (notifiedRef.current.has(alert.id)) continue;
       notifiedRef.current.add(alert.id);
       new Notification("AI News — Breaking", { body: `${alert.topic}: ${alert.story_count} stories` });
     }
-  }, [alerts]);
+  }, [alerts, settingsQ.data]);
 
   // Group by date (settings-driven)
   const groupByDateEnabled = (settingsQ.data as SettingsMap | undefined)?.display_group_by_date ?? true;
