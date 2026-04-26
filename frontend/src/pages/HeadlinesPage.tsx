@@ -1,7 +1,9 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
-import { api, type StoryItem, type SourceItem } from "../lib/api";
-import StoryCard from "../components/StoryCard";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { api, type StoryItem, type SettingsMap } from "../lib/api";
+import StoryRow from "../components/StoryRow";
+import FilterBar from "../components/FilterBar";
+import TrendBanner from "../components/TrendBanner";
 
 function dateLabel(iso: string): string {
   const d = new Date(iso);
@@ -33,125 +35,238 @@ function groupByDate(items: StoryItem[]): [string, StoryItem[]][] {
 
 export default function HeadlinesPage() {
   const qc = useQueryClient();
-  const [offset, setOffset] = useState(0);
-  const [sourceFilter, setSourceFilter] = useState<number | "">("");
-  const [search, setSearch] = useState("");
-  const limit = 50;
 
+  // State
+  const [sortBy, setSortBy] = useState("relevance");
+  const [sourceFilter, setSourceFilter] = useState<number | "">("");
+  const [topicFilter, setTopicFilter] = useState("");
+  const [scoreThreshold, setScoreThreshold] = useState(0);
+  const [unreadOnly, setUnreadOnly] = useState(false);
+  const [search, setSearch] = useState("");
+  const [offset, setOffset] = useState(0);
+  const limit = 50;
+  const [expandAll, setExpandAll] = useState(false);
+  const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
+
+  // Build query params
   const params = new URLSearchParams();
   params.set("limit", String(limit));
   params.set("offset", String(offset));
+  if (sortBy !== "relevance") params.set("sort_by", sortBy);
   if (sourceFilter !== "") params.set("source_id", String(sourceFilter));
+  if (topicFilter) params.set("topics", topicFilter);
+  if (scoreThreshold > 0) params.set("min_score", String(scoreThreshold));
+  if (unreadOnly) params.set("unread_only", "true");
   if (search) params.set("q", search);
 
-  const { data, isLoading, error } = useQuery({
-    queryKey: ["stories", offset, sourceFilter, search],
+  // Queries
+  const storiesQ = useQuery({
+    queryKey: ["stories", offset, sortBy, sourceFilter, topicFilter, scoreThreshold, unreadOnly, search],
     queryFn: () => api.getStories(params.toString()),
   });
 
-  const sourcesQuery = useQuery({
+  const sourcesQ = useQuery({
     queryKey: ["sources"],
     queryFn: api.getSources,
   });
 
-  const fetchMutation = useMutation({
+  const settingsQ = useQuery({
+    queryKey: ["settings"],
+    queryFn: api.getSettings,
+  });
+
+  const alertsQ = useQuery({
+    queryKey: ["alerts"],
+    queryFn: api.getPendingAlerts,
+    refetchInterval: 60_000,
+  });
+
+  // Mutations
+  const fetchMut = useMutation({
     mutationFn: () => api.triggerFetch(),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["stories"] });
     },
   });
 
+  // Load persisted display preferences
+  useMemo(() => {
+    if (!settingsQ.data) return;
+    const s = settingsQ.data as SettingsMap;
+    if (s.display_expand_summaries) setExpandAll(true);
+    if (s.display_sort_by) setSortBy(String(s.display_sort_by));
+    if (s.display_score_threshold) setScoreThreshold(Number(s.display_score_threshold));
+  }, [settingsQ.data]);
+
+  // Browser notifications for breaking alerts
+  const alerts = alertsQ.data?.items ?? [];
+  const notifiedRef = useRef<Set<number>>(new Set());
+  useEffect(() => {
+    if (!alerts.length) return;
+    if (!("Notification" in window) || Notification.permission !== "granted") return;
+    for (const alert of alerts) {
+      if (alert.severity !== "breaking") continue;
+      if (notifiedRef.current.has(alert.id)) continue;
+      notifiedRef.current.add(alert.id);
+      new Notification("AI News — Breaking", { body: `${alert.topic}: ${alert.story_count} stories` });
+    }
+  }, [alerts]);
+
+  // Group by date (settings-driven)
+  const groupByDateEnabled = (settingsQ.data as SettingsMap | undefined)?.display_group_by_date ?? true;
   const grouped = useMemo(
-    () => (data ? groupByDate(data.items) : []),
-    [data],
+    () => (storiesQ.data && groupByDateEnabled ? groupByDate(storiesQ.data.items) : []),
+    [storiesQ.data, groupByDateEnabled],
   );
 
-  const totalPages = data ? Math.ceil(data.total / limit) : 0;
+  const stories = storiesQ.data?.items ?? [];
+  const totalPages = storiesQ.data ? Math.ceil(storiesQ.data.total / limit) : 0;
   const currentPage = Math.floor(offset / limit) + 1;
+
+  function isExpanded(id: number) {
+    return expandAll || expandedIds.has(id);
+  }
+
+  function toggleExpanded(id: number) {
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function resetFilters() {
+    setSourceFilter("");
+    setTopicFilter("");
+    setScoreThreshold(0);
+    setUnreadOnly(false);
+    setSearch("");
+    setOffset(0);
+  }
 
   return (
     <div>
-      <div className="flex flex-wrap items-center gap-3 mb-6">
-        <input
-          type="text"
-          placeholder="Search headlines..."
-          value={search}
-          onChange={(e) => {
-            setSearch(e.target.value);
-            setOffset(0);
-          }}
-          className="flex-1 min-w-[200px] px-3 py-2 bg-hankel-surface border border-hankel-surface rounded-lg text-hankel-text text-sm placeholder:text-hankel-muted focus:outline-none focus:ring-1 focus:ring-hankel-accent"
-        />
-        <select
-          value={sourceFilter}
-          onChange={(e) => {
-            setSourceFilter(e.target.value === "" ? "" : Number(e.target.value));
-            setOffset(0);
-          }}
-          className="px-3 py-2 bg-hankel-surface border border-hankel-surface rounded-lg text-hankel-text text-sm focus:outline-none focus:ring-1 focus:ring-hankel-accent"
-        >
-          <option value="">All sources</option>
-          {sourcesQuery.data?.items.map((s: SourceItem) => (
-            <option key={s.id} value={s.id}>
-              {s.name}
-            </option>
-          ))}
-        </select>
+      {/* Trend banners */}
+      <TrendBanner
+        alerts={alerts}
+        onTopicClick={(topic) => {
+          setTopicFilter(topic);
+          setOffset(0);
+        }}
+      />
+
+      {/* Header bar */}
+      <div className="flex items-center gap-3 mb-4">
         <button
-          onClick={() => fetchMutation.mutate()}
-          disabled={fetchMutation.isPending}
+          onClick={() => fetchMut.mutate()}
+          disabled={fetchMut.isPending}
           className="px-4 py-2 bg-hankel-accent text-hankel-bg rounded-lg text-sm font-medium hover:brightness-110 disabled:opacity-50 transition"
         >
-          {fetchMutation.isPending ? "Fetching..." : "Refresh Now"}
+          {fetchMut.isPending ? "Fetching..." : "Refresh Now"}
         </button>
+        <button
+          onClick={() => setExpandAll((v) => !v)}
+          className={`px-3 py-2 rounded-lg text-sm font-medium border transition-colors ${
+            expandAll
+              ? "bg-hankel-accent text-hankel-bg border-hankel-accent"
+              : "bg-hankel-surface text-hankel-muted border-white/10 hover:text-hankel-text"
+          }`}
+        >
+          {expandAll ? "Collapse All" : "Expand All"}
+        </button>
+        <div className="flex-1" />
+        {storiesQ.data && (
+          <span className="text-xs text-hankel-muted">
+            {storiesQ.data.total} {storiesQ.data.total === 1 ? "story" : "stories"}
+          </span>
+        )}
       </div>
 
-      {fetchMutation.isSuccess && fetchMutation.data && (
+      {/* Fetch result */}
+      {fetchMut.isSuccess && fetchMut.data && (
         <div className="mb-4 px-3 py-2 bg-hankel-surface rounded-lg text-sm text-hankel-muted">
-          Fetched {fetchMutation.data.stories_new} new / {fetchMutation.data.stories_seen} seen
-          &middot; {fetchMutation.data.sources_ok} sources OK
-          {fetchMutation.data.sources_failed > 0 && (
+          Fetched {fetchMut.data.stories_new} new / {fetchMut.data.stories_seen} seen
+          &middot; {fetchMut.data.sources_ok} sources OK
+          {fetchMut.data.sources_failed > 0 && (
             <span className="text-red-400">
-              {" "}&middot; {fetchMutation.data.sources_failed} failed
+              {" "}&middot; {fetchMut.data.sources_failed} failed
             </span>
           )}
-          &middot; {fetchMutation.data.duration_ms}ms
+          &middot; {fetchMut.data.duration_ms}ms
         </div>
       )}
 
-      {isLoading && <p className="text-hankel-muted py-8 text-center">Loading...</p>}
-      {error && (
+      {/* Filter bar */}
+      <FilterBar
+        sortBy={sortBy}
+        onSortChange={(v) => { setSortBy(v); setOffset(0); }}
+        sourceFilter={sourceFilter}
+        onSourceChange={(v) => { setSourceFilter(v); setOffset(0); }}
+        sources={sourcesQ.data?.items ?? []}
+        topicFilter={topicFilter}
+        onTopicChange={(v) => { setTopicFilter(v); setOffset(0); }}
+        scoreThreshold={scoreThreshold}
+        onScoreChange={(v) => { setScoreThreshold(v); setOffset(0); }}
+        unreadOnly={unreadOnly}
+        onUnreadChange={(v) => { setUnreadOnly(v); setOffset(0); }}
+        search={search}
+        onSearchChange={(v) => { setSearch(v); setOffset(0); }}
+      />
+
+      {/* Loading / Error states */}
+      {storiesQ.isLoading && <p className="text-hankel-muted py-8 text-center">Loading...</p>}
+      {storiesQ.error && (
         <p className="text-red-400 py-8 text-center">
-          Error: {(error as Error).message}
+          Error: {(storiesQ.error as Error).message}
         </p>
       )}
 
-      {data && data.items.length === 0 && (
+      {/* Empty state */}
+      {storiesQ.data && stories.length === 0 && (
         <p className="text-hankel-muted py-12 text-center">
-          No stories yet. Click "Refresh Now" to fetch headlines.
+          No stories match your filters.{" "}
+          <button onClick={resetFilters} className="text-hankel-accent hover:underline">
+            Clear filters
+          </button>
         </p>
       )}
 
-      {grouped.map(([label, stories]) => (
-        <section key={label} className="mb-8">
-          <h2 className="text-lg font-semibold text-hankel-text mb-3 border-b border-hankel-surface pb-2">
-            {label}
-          </h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {stories.map((story) => (
-              <StoryCard
-                key={story.id}
-                story={story}
-                onSourceClick={(sourceId) => {
-                  setSourceFilter(sourceId);
-                  setOffset(0);
-                }}
-              />
-            ))}
-          </div>
-        </section>
-      ))}
+      {/* Stories list — grouped by date */}
+      {groupByDateEnabled &&
+        grouped.map(([label, items]) => (
+          <section key={label} className="mb-6">
+            <h2 className="text-sm font-semibold text-hankel-muted mb-1 px-4 uppercase tracking-wider">
+              {label}
+            </h2>
+            <div className="bg-hankel-surface/30 rounded-lg overflow-hidden">
+              {items.map((story) => (
+                <StoryRow
+                  key={story.id}
+                  story={story}
+                  expanded={isExpanded(story.id)}
+                  onToggle={() => toggleExpanded(story.id)}
+                />
+              ))}
+            </div>
+          </section>
+        ))}
 
+      {/* Stories list — flat (no date grouping) */}
+      {!groupByDateEnabled && stories.length > 0 && (
+        <div className="bg-hankel-surface/30 rounded-lg overflow-hidden">
+          {stories.map((story) => (
+            <StoryRow
+              key={story.id}
+              story={story}
+              expanded={isExpanded(story.id)}
+              onToggle={() => toggleExpanded(story.id)}
+            />
+          ))}
+        </div>
+      )}
+
+      {/* Pagination */}
       {totalPages > 1 && (
         <div className="flex items-center justify-center gap-3 mt-6 text-sm">
           <button

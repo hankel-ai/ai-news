@@ -1,4 +1,7 @@
 import { ReactNode } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { api } from "../lib/api";
+import AlertBadge from "./AlertBadge";
 
 interface Props {
   activeTab: string;
@@ -7,6 +10,14 @@ interface Props {
 }
 
 export default function Layout({ activeTab, onTabChange, children }: Props) {
+  const alertsQ = useQuery({
+    queryKey: ["alerts"],
+    queryFn: api.getPendingAlerts,
+    refetchInterval: 60_000,
+  });
+
+  const pendingCount = alertsQ.data?.items.length ?? 0;
+
   const tabs = [
     { key: "headlines" as const, label: "Headlines" },
     { key: "settings" as const, label: "Settings" },
@@ -27,7 +38,16 @@ export default function Layout({ activeTab, onTabChange, children }: Props) {
                   : "text-hankel-muted hover:text-hankel-text"
               }`}
             >
-              {t.label}
+              {t.key === "headlines" ? (
+                <span className="relative">
+                  {t.label}
+                  <span className="absolute -top-2 -right-5">
+                    <AlertBadge count={pendingCount} />
+                  </span>
+                </span>
+              ) : (
+                t.label
+              )}
             </button>
           ))}
         </nav>

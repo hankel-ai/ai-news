@@ -42,6 +42,10 @@ function SourcesSection() {
     onSuccess: (data) => setReconcileData(data),
   });
 
+  const analyzeMutation = useMutation({
+    mutationFn: () => api.triggerAnalyze(),
+  });
+
   const healthMap = new Map<number, SourceHealthItem>();
   healthData?.items.forEach((h) => healthMap.set(h.source_id, h));
 
@@ -125,7 +129,27 @@ function SourcesSection() {
 
       {runsData && runsData.items.length > 0 && (
         <div className="mt-4">
-          <h3 className="text-sm font-medium text-hankel-muted mb-2">Recent Fetch Runs</h3>
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="text-sm font-medium text-hankel-muted">Recent Fetch Runs</h3>
+            <button
+              onClick={() => analyzeMutation.mutate()}
+              disabled={analyzeMutation.isPending}
+              className="text-xs text-hankel-accent hover:underline disabled:opacity-50"
+            >
+              {analyzeMutation.isPending ? "Analyzing..." : "Re-analyze"}
+            </button>
+          </div>
+          {analyzeMutation.isSuccess && analyzeMutation.data && (
+            <div className="mb-2 text-xs text-green-400 bg-hankel-surface rounded px-3 py-1.5">
+              Analyzed {analyzeMutation.data.analyzed} stories
+              {analyzeMutation.data.message && ` — ${analyzeMutation.data.message}`}
+            </div>
+          )}
+          {analyzeMutation.isError && (
+            <div className="mb-2 text-xs text-red-400 bg-hankel-surface rounded px-3 py-1.5">
+              Analysis failed: {(analyzeMutation.error as Error).message}
+            </div>
+          )}
           <div className="space-y-1">
             {runsData.items.slice(0, 5).map((r) => (
               <div key={r.id} className="flex items-center gap-3 text-xs text-hankel-muted bg-hankel-surface/50 rounded px-3 py-1.5">
@@ -233,17 +257,49 @@ function SettingsForm() {
     },
   });
 
+  const testConnectionMutation = useMutation({
+    mutationFn: () => api.triggerAnalyze(),
+  });
+
   if (isLoading || !settings) return <p className="text-hankel-muted">Loading settings...</p>;
 
-  const merged = { ...settings, ...draft };
+  const merged = { ...settings, ...draft } as SettingsMap;
 
-  function handleChange(key: keyof SettingsMap, value: unknown) {
+  function handleChange(key: string, value: unknown) {
     setDraft((prev) => ({ ...prev, [key]: value }));
+  }
+
+  function handleRequestPermission() {
+    if (!("Notification" in window)) {
+      alert("This browser does not support notifications.");
+      return;
+    }
+    Notification.requestPermission().then((perm) => {
+      if (perm === "granted") {
+        alert("Notifications enabled!");
+      } else {
+        alert(`Notification permission: ${perm}`);
+      }
+    });
+  }
+
+  function handleTestConnection() {
+    testConnectionMutation.mutate(undefined, {
+      onSuccess: (data) => {
+        alert(`Connection OK — analyzed ${data.analyzed} stories${data.message ? `: ${data.message}` : ""}`);
+      },
+      onError: (err) => {
+        alert(`Connection failed: ${(err as Error).message}`);
+      },
+    });
   }
 
   return (
     <section>
       <h2 className="text-lg font-semibold mb-3">Settings</h2>
+
+      {/* General */}
+      <h3 className="text-sm font-medium text-hankel-muted mb-2 mt-4 uppercase tracking-wider">General</h3>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <Field label="Fetch interval (minutes)">
           <input
@@ -265,6 +321,17 @@ function SettingsForm() {
             className="input-field"
           />
         </Field>
+        <Field label="Enrich content">
+          <Toggle
+            checked={!!merged.enrich_content}
+            onChange={(v) => handleChange("enrich_content", v)}
+          />
+        </Field>
+      </div>
+
+      {/* Display */}
+      <h3 className="text-sm font-medium text-hankel-muted mb-2 mt-6 uppercase tracking-wider">Display</h3>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <Field label="Page size">
           <input
             type="number"
@@ -275,26 +342,136 @@ function SettingsForm() {
             className="input-field"
           />
         </Field>
-        <Field label="Enrich content">
-          <Toggle
-            checked={merged.enrich_content}
-            onChange={(v) => handleChange("enrich_content", v)}
-          />
-        </Field>
         <Field label="Group by date">
           <Toggle
-            checked={merged.display_group_by_date}
+            checked={!!merged.display_group_by_date}
             onChange={(v) => handleChange("display_group_by_date", v)}
           />
         </Field>
         <Field label="Hover preview (desktop)">
           <Toggle
-            checked={merged.hover_preview_enabled}
+            checked={!!merged.hover_preview_enabled}
             onChange={(v) => handleChange("hover_preview_enabled", v)}
           />
         </Field>
+        <Field label="Expand summaries by default">
+          <Toggle
+            checked={!!(merged as Record<string, unknown>).display_expand_summaries}
+            onChange={(v) => handleChange("display_expand_summaries", v)}
+          />
+        </Field>
+        <Field label="Default sort">
+          <select
+            value={String((merged as Record<string, unknown>).display_sort_by ?? "relevance")}
+            onChange={(e) => handleChange("display_sort_by", e.target.value)}
+            className="input-field"
+          >
+            <option value="relevance">Relevance</option>
+            <option value="newest">Newest</option>
+            <option value="source">Source</option>
+          </select>
+        </Field>
+        <Field label="Min score to display">
+          <input
+            type="number"
+            min={0}
+            max={100}
+            value={Number((merged as Record<string, unknown>).display_score_threshold ?? 0)}
+            onChange={(e) => handleChange("display_score_threshold", Number(e.target.value))}
+            className="input-field"
+          />
+        </Field>
       </div>
-      <div className="mt-4 flex items-center gap-3">
+
+      {/* AI Configuration */}
+      <h3 className="text-sm font-medium text-hankel-muted mb-2 mt-6 uppercase tracking-wider">AI Configuration</h3>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <Field label="LLM Provider">
+          <select
+            value={String((merged as Record<string, unknown>).llm_provider ?? "ollama")}
+            onChange={(e) => handleChange("llm_provider", e.target.value)}
+            className="input-field"
+          >
+            <option value="ollama">Ollama</option>
+            <option value="anthropic">Anthropic</option>
+            <option value="litellm">LiteLLM</option>
+          </select>
+        </Field>
+        <Field label="Model">
+          <input
+            type="text"
+            value={String((merged as Record<string, unknown>).llm_model ?? "")}
+            onChange={(e) => handleChange("llm_model", e.target.value)}
+            placeholder="e.g. llama3, claude-sonnet-4-20250514"
+            className="input-field"
+          />
+        </Field>
+        <Field label="Base URL">
+          <input
+            type="text"
+            value={String((merged as Record<string, unknown>).llm_base_url ?? "")}
+            onChange={(e) => handleChange("llm_base_url", e.target.value)}
+            placeholder="e.g. http://localhost:11434"
+            className="input-field"
+          />
+        </Field>
+        <Field label="API Key">
+          <input
+            type="password"
+            value={String((merged as Record<string, unknown>).llm_api_key ?? "")}
+            onChange={(e) => handleChange("llm_api_key", e.target.value)}
+            placeholder="sk-..."
+            className="input-field"
+          />
+        </Field>
+        <Field label="Analysis enabled">
+          <Toggle
+            checked={!!(merged as Record<string, unknown>).analysis_enabled}
+            onChange={(v) => handleChange("analysis_enabled", v)}
+          />
+        </Field>
+        <Field label="Breaking threshold">
+          <input
+            type="number"
+            min={1}
+            max={100}
+            value={Number((merged as Record<string, unknown>).breaking_threshold ?? 3)}
+            onChange={(e) => handleChange("breaking_threshold", Number(e.target.value))}
+            className="input-field"
+          />
+        </Field>
+        <Field label="">
+          <button
+            onClick={handleTestConnection}
+            disabled={testConnectionMutation.isPending}
+            className="px-4 py-2 bg-hankel-surface text-hankel-text rounded-lg text-sm font-medium border border-white/10 hover:border-hankel-accent hover:text-hankel-accent disabled:opacity-50 transition"
+          >
+            {testConnectionMutation.isPending ? "Testing..." : "Test Connection"}
+          </button>
+        </Field>
+      </div>
+
+      {/* Notifications */}
+      <h3 className="text-sm font-medium text-hankel-muted mb-2 mt-6 uppercase tracking-wider">Notifications</h3>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <Field label="Browser notifications">
+          <Toggle
+            checked={!!(merged as Record<string, unknown>).notifications_enabled}
+            onChange={(v) => handleChange("notifications_enabled", v)}
+          />
+        </Field>
+        <Field label="">
+          <button
+            onClick={handleRequestPermission}
+            className="px-4 py-2 bg-hankel-surface text-hankel-text rounded-lg text-sm font-medium border border-white/10 hover:border-hankel-accent hover:text-hankel-accent transition"
+          >
+            Request Permission
+          </button>
+        </Field>
+      </div>
+
+      {/* Save */}
+      <div className="mt-6 flex items-center gap-3">
         <button
           onClick={() => saveMutation.mutate(draft)}
           disabled={Object.keys(draft).length === 0 || saveMutation.isPending}
