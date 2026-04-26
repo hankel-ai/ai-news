@@ -16,7 +16,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import select
 
-from app.api import embed, fetch, health, settings, sources, stories
+from app.api import alerts, embed, fetch, health, settings, sources, stories
 from app.config import get_settings
 from app.db.engine import SessionLocal, engine
 from app.db.migrations import run as run_migrations
@@ -135,6 +135,7 @@ app.include_router(settings.router)
 app.include_router(fetch.router)
 app.include_router(health.router)
 app.include_router(embed.router)
+app.include_router(alerts.router)
 
 _static_dir = get_settings().static_dir
 if _static_dir.is_dir() and (_static_dir / "index.html").exists():
