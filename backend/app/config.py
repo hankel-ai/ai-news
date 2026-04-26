@@ -18,6 +18,10 @@ class Settings(BaseSettings):
     embed_allowed_origins: str = "https://hankel.ai,https://www.hankel.ai"
     log_level: str = "INFO"
     static_dir: Path = Path(__file__).parent / "static"
+    llm_provider: str = "ollama"
+    llm_model: str = "llama3.2"
+    llm_base_url: str = ""
+    llm_api_key: str = ""
 
     @property
     def embed_origins_list(self) -> list[str]:

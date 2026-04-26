@@ -69,7 +69,25 @@ async def _seed_default_settings() -> None:
         for key, default_val in DEFAULTS.items():
             existing = await session.get(Setting, key)
             if existing is None:
-                session.add(Setting(key=key, value=default_val))
+                session.add(Setting(key=key, value=str(default_val)))
+        await session.flush()
+
+        # Seed LLM settings from env vars (only if DB value is still default)
+        cfg = get_settings()
+        env_map = {
+            "llm_provider": cfg.llm_provider,
+            "llm_model": cfg.llm_model,
+            "llm_base_url": cfg.llm_base_url,
+            "llm_api_key": cfg.llm_api_key,
+        }
+        for key, env_val in env_map.items():
+            if not env_val:
+                continue
+            existing = await session.get(Setting, key)
+            if existing and existing.value == str(DEFAULTS.get(key, "")):
+                existing.value = env_val
+        await session.flush()
+
         await session.commit()
 
 

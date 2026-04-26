@@ -18,6 +18,19 @@ DEFAULTS = {
     "display_page_size": "50",
     "timezone": "America/New_York",
     "hover_preview_enabled": "true",
+    # LLM settings
+    "llm_provider": "ollama",
+    "llm_model": "llama3.2",
+    "llm_base_url": "",
+    "llm_api_key": "",
+    "analysis_enabled": True,
+    "breaking_threshold": 3,
+    # display settings
+    "display_expand_summaries": False,
+    "display_sort_by": "relevance",
+    "display_score_threshold": 0,
+    # notification settings
+    "notifications_enabled": True,
 }
 
 
