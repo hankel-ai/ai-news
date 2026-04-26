@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import ForeignKey, Index, Integer, String, UniqueConstraint
+from sqlalchemy import ForeignKey, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -60,6 +60,10 @@ class Story(Base):
     image_url: Mapped[str | None] = mapped_column(String, nullable=True)
     first_seen_at: Mapped[str] = mapped_column(String, nullable=False, default=_now)
     viewed_at: Mapped[str | None] = mapped_column(String, nullable=True)
+    ai_summary: Mapped[str | None] = mapped_column(Text, default=None)
+    relevance_score: Mapped[int | None] = mapped_column(Integer, default=None)
+    topics: Mapped[str | None] = mapped_column(Text, default=None)
+    analyzed_at: Mapped[str | None] = mapped_column(Text, default=None)
 
     source: Mapped[Source] = relationship(back_populates="stories")
 
@@ -105,3 +109,15 @@ class SourceHealth(Base):
     story_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     latency_ms: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     error: Mapped[str | None] = mapped_column(String, nullable=True)
+
+
+class Trend(Base):
+    __tablename__ = "trends"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    topic: Mapped[str] = mapped_column(Text, nullable=False)
+    severity: Mapped[str] = mapped_column(Text, nullable=False, default="normal")
+    story_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    detected_at: Mapped[str] = mapped_column(Text, nullable=False, default=_now)
+    expires_at: Mapped[str] = mapped_column(Text, nullable=False)
+    notified: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

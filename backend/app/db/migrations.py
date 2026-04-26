@@ -12,8 +12,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncEngine
 
-from app.db.engine import engine
+from app.db.engine import engine as _default_engine
 
 logger = logging.getLogger(__name__)
 
@@ -32,8 +33,9 @@ def _discover() -> list[tuple[int, Path]]:
     return items
 
 
-async def run() -> None:
+async def run(engine: AsyncEngine | None = None) -> None:
     """Apply any pending migrations. Idempotent."""
+    engine = engine or _default_engine
     async with engine.begin() as conn:
         # WAL + FK must be set before any other work.
         await conn.exec_driver_sql("PRAGMA journal_mode=WAL")
