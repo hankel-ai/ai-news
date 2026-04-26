@@ -35,7 +35,30 @@ async def _run_fetch_job() -> None:
             retention = int(retention_raw)
         except ValueError:
             retention = 30
-        await run_once(session, enrich_content=enrich, retention_days=retention)
+
+        analysis_raw = await _get_setting(session, "analysis_enabled", "true")
+        analysis_enabled = analysis_raw.strip().lower() in ("true", "1", "yes")
+        llm_provider = await _get_setting(session, "llm_provider", "ollama")
+        llm_model = await _get_setting(session, "llm_model", "llama3.2")
+        llm_base_url = await _get_setting(session, "llm_base_url", "")
+        llm_api_key = await _get_setting(session, "llm_api_key", "")
+        breaking_raw = await _get_setting(session, "breaking_threshold", "3")
+        try:
+            breaking_threshold = int(breaking_raw)
+        except ValueError:
+            breaking_threshold = 3
+
+        await run_once(
+            session,
+            enrich_content=enrich,
+            retention_days=retention,
+            analysis_enabled=analysis_enabled,
+            llm_provider=llm_provider,
+            llm_model=llm_model,
+            llm_base_url=llm_base_url,
+            llm_api_key=llm_api_key,
+            breaking_threshold=breaking_threshold,
+        )
 
 
 def init_scheduler() -> AsyncIOScheduler:

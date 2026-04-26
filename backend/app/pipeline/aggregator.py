@@ -10,7 +10,9 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import FetchRun, Source
+from app.db.models import FetchRun, Source, Story as StoryModel
+from app.llm import get_provider
+from app.pipeline.analyzer import analyze_stories
 from app.pipeline.health_writer import record_health
 from app.pipeline.persist import prune_old, save_stories
 from app.sources.base import Story
@@ -91,6 +93,12 @@ async def run_once(
     dry_run: bool = False,
     enrich_content: bool = False,
     retention_days: int | None = None,
+    analysis_enabled: bool = False,
+    llm_provider: str = "ollama",
+    llm_model: str = "llama3.2",
+    llm_base_url: str = "",
+    llm_api_key: str = "",
+    breaking_threshold: int = 3,
 ) -> FetchRun:
     """Execute one fetch cycle.
 
@@ -157,6 +165,26 @@ async def run_once(
     stories_new = 0
     if not dry_run and deduped_pairs:
         stories_new = await save_stories(session, deduped_pairs)
+
+    if analysis_enabled and stories_new > 0:
+        try:
+            provider = get_provider(
+                provider_name=llm_provider, model=llm_model,
+                base_url=llm_base_url, api_key=llm_api_key,
+            )
+            from sqlalchemy import select as sa_select
+            unanalyzed = await session.execute(
+                sa_select(StoryModel.id).where(
+                    StoryModel.analyzed_at.is_(None),
+                    StoryModel.first_seen_at >= run.started_at,
+                )
+            )
+            new_ids = [row[0] for row in unanalyzed.fetchall()]
+            if new_ids:
+                await analyze_stories(session, new_ids, provider, breaking_threshold)
+                await session.commit()
+        except Exception:
+            logger.exception("AI analysis failed — stories saved without analysis")
 
     if retention_days is not None and not dry_run:
         await prune_old(session, retention_days)
