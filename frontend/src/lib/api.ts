@@ -25,6 +25,7 @@ export interface StoryItem {
   first_seen_at: string;
   keywords_matched: string | null;
   image_url: string | null;
+  viewed_at: string | null;
 }
 
 export interface StoriesResponse {
@@ -58,6 +59,7 @@ export interface SettingsMap {
   display_group_by_date: boolean;
   display_page_size: number;
   timezone: string;
+  hover_preview_enabled: boolean;
   [key: string]: unknown;
 }
 
@@ -92,6 +94,16 @@ export interface SourceHealthItem {
   status: string;
 }
 
+export interface ReconcileResult {
+  source_id: number;
+  source_name: string;
+  available_count: number;
+  matched_count: number;
+  missing_count: number;
+  matched: { title: string; url: string; db_title: string }[];
+  missing: { title: string; url: string }[];
+}
+
 export const api = {
   getStories: (params?: string) =>
     request<StoriesResponse>(`/api/stories${params ? `?${params}` : ""}`),
@@ -114,4 +126,12 @@ export const api = {
   getHealth: () => request<HealthStatus>("/api/health"),
   getSourceHealth: () =>
     request<{ items: SourceHealthItem[] }>("/api/source-health"),
+  markViewed: (storyId: number) =>
+    request<{ id: number; viewed_at: string }>(`/api/stories/${storyId}/view`, {
+      method: "PUT",
+    }),
+  reconcileSource: (sourceId: number) =>
+    request<ReconcileResult>(`/api/sources/${sourceId}/reconcile`, {
+      method: "POST",
+    }),
 };

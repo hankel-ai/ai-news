@@ -17,6 +17,7 @@ async def fetch_hackernews(config: dict) -> list[Story]:
     keywords = [k.lower() for k in config.get("keywords", ["AI"])]
     max_stories = config.get("max_stories", 5)
     min_score = config.get("min_score", 50)
+    skip_filters = config.get("skip_keyword_filter", False)
 
     async with httpx.AsyncClient(timeout=15) as client:
         top_resp = await client.get(f"{HN_API}/topstories.json")
@@ -40,7 +41,7 @@ async def fetch_hackernews(config: dict) -> list[Story]:
                 title = item.get("title", "")
                 url = item.get("url", f"https://news.ycombinator.com/item?id={item['id']}")
                 matched = _match_keywords(title, url, keywords)
-                if not matched:
+                if not matched and not skip_filters:
                     continue
 
                 stories.append(Story(

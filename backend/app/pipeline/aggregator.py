@@ -41,7 +41,7 @@ HTML_SCRAPERS = {
 }
 
 
-def _source_to_config(src: Source) -> dict:
+def source_to_config(src: Source) -> dict:
     cfg: dict = {
         "_source_name": src.name,
         "max_stories": src.max_stories,
@@ -67,7 +67,7 @@ def _source_to_config(src: Source) -> dict:
     return cfg
 
 
-def _resolve_fetcher(src: Source):
+def resolve_fetcher(src: Source):
     if src.type == "html_scraper":
         return HTML_SCRAPERS.get(src.key)
     return FETCHERS.get(src.type)
@@ -109,11 +109,11 @@ async def run_once(
 
     tasks = []
     for src in sources:
-        fetcher = _resolve_fetcher(src)
+        fetcher = resolve_fetcher(src)
         if fetcher is None:
             logger.warning("no fetcher for source key=%s type=%s", src.key, src.type)
             continue
-        cfg = _source_to_config(src)
+        cfg = source_to_config(src)
         tasks.append(_timed_fetch(src, fetcher(cfg)))
 
     results = await asyncio.gather(*tasks, return_exceptions=False)

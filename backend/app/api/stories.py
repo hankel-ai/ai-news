@@ -1,5 +1,6 @@
 import logging
 import re
+from datetime import datetime, timezone
 from urllib.parse import urlparse
 
 import httpx
@@ -65,10 +66,22 @@ async def list_stories(
                 "first_seen_at": r.first_seen_at,
                 "keywords_matched": r.keywords_matched,
                 "image_url": r.image_url,
+                "viewed_at": r.viewed_at,
             }
             for r in rows
         ],
     }
+
+
+@router.put("/stories/{story_id}/view")
+async def mark_viewed(story_id: int, session: AsyncSession = Depends(get_session)):
+    story = await session.get(Story, story_id)
+    if not story:
+        raise HTTPException(404, "story not found")
+    if not story.viewed_at:
+        story.viewed_at = datetime.now(timezone.utc).isoformat()
+        await session.commit()
+    return {"id": story.id, "viewed_at": story.viewed_at}
 
 
 _STRIP_HEADERS = {

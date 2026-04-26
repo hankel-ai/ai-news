@@ -53,6 +53,25 @@ def extract_og_image(html: str) -> str | None:
         except (json.JSONDecodeError, TypeError, AttributeError):
             continue
 
+    for container in soup.find_all(["article", "figure"], limit=10):
+        img_tag = container.find("img", src=True)
+        if img_tag:
+            src = img_tag["src"].strip()
+            if not src.startswith("http"):
+                continue
+            try:
+                w = img_tag.get("width", "")
+                h = img_tag.get("height", "")
+                if w and int(w) < 80:
+                    continue
+                if h and int(h) < 80:
+                    continue
+            except ValueError:
+                pass
+            if any(p in src.lower() for p in _SKIP_IMG_PATTERNS):
+                continue
+            return src
+
     for img_tag in soup.find_all("img", src=True, limit=20):
         src = img_tag["src"].strip()
         if not src.startswith("http"):
@@ -84,6 +103,15 @@ async def _fetch_image_url(story: Story, client: httpx.AsyncClient) -> None:
             story.image_url = extract_og_image(resp.text)
     except Exception:
         pass
+
+    if not story.image_url:
+        try:
+            from urllib.parse import urlparse
+            domain = urlparse(story.url).netloc
+            if domain:
+                story.image_url = f"https://www.google.com/s2/favicons?domain={domain}&sz=128"
+        except Exception:
+            pass
 
 
 async def fetch_images(stories: list[Story]) -> None:

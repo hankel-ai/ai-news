@@ -1,5 +1,6 @@
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useRef, useState } from "react";
-import type { StoryItem } from "../lib/api";
+import { api, type StoryItem } from "../lib/api";
 import PreviewPopup from "./PreviewPopup";
 
 function timeAgo(iso: string): string {
@@ -12,6 +13,9 @@ function timeAgo(iso: string): string {
   return `${days}d ago`;
 }
 
+const canHover =
+  typeof window !== "undefined" && window.matchMedia("(hover: hover)").matches;
+
 function sourceHue(name: string): number {
   let h = 0;
   for (let i = 0; i < name.length; i++) h = name.charCodeAt(i) + ((h << 5) - h);
@@ -21,7 +25,25 @@ function sourceHue(name: string): number {
 const HOVER_SHOW_DELAY = 500;
 const HOVER_HIDE_DELAY = 300;
 
-export default function StoryCard({ story }: { story: StoryItem }) {
+interface StoryCardProps {
+  story: StoryItem;
+  onSourceClick?: (sourceId: number) => void;
+}
+
+export default function StoryCard({ story, onSourceClick }: StoryCardProps) {
+  const { data: settings } = useQuery({
+    queryKey: ["settings"],
+    queryFn: api.getSettings,
+    staleTime: 60_000,
+  });
+  const hoverEnabled = canHover && (settings?.hover_preview_enabled ?? true);
+
+  const qc = useQueryClient();
+  const viewMutation = useMutation({
+    mutationFn: () => api.markViewed(story.id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["stories"] }),
+  });
+
   const [imgFailed, setImgFailed] = useState(false);
   const [showPopup, setShowPopup] = useState(false);
   const showTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -59,12 +81,16 @@ export default function StoryCard({ story }: { story: StoryItem }) {
         href={story.url}
         target="_blank"
         rel="noopener noreferrer"
-        onMouseEnter={scheduleShow}
-        onMouseLeave={scheduleHide}
+        onMouseEnter={hoverEnabled ? scheduleShow : undefined}
+        onMouseLeave={hoverEnabled ? scheduleHide : undefined}
         onClick={(e) => {
-          if (showPopup) e.preventDefault();
+          if (hoverEnabled && showPopup) {
+            e.preventDefault();
+          } else if (!story.viewed_at) {
+            viewMutation.mutate();
+          }
         }}
-        className="group flex flex-col bg-hankel-surface rounded-lg overflow-hidden hover:ring-1 hover:ring-hankel-accent transition"
+        className={`group flex flex-col bg-hankel-surface rounded-lg overflow-hidden hover:ring-1 hover:ring-hankel-accent transition ${story.viewed_at ? "opacity-60" : ""}`}
       >
         <div className="relative w-full aspect-[2/1] bg-hankel-bg overflow-hidden">
           {showImage ? (
@@ -93,7 +119,21 @@ export default function StoryCard({ story }: { story: StoryItem }) {
             {story.title}
           </h3>
           <div className="flex items-center gap-1.5 text-xs text-hankel-muted mt-auto pt-1">
-            <span>{story.source_name}</span>
+            {onSourceClick ? (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onSourceClick(story.source_id);
+                }}
+                className="hover:text-hankel-accent hover:underline transition"
+              >
+                {story.source_name}
+              </button>
+            ) : (
+              <span>{story.source_name}</span>
+            )}
             <span>&middot;</span>
             <span>{timeAgo(story.first_seen_at)}</span>
             {story.score != null && (

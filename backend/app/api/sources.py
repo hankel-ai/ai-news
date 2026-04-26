@@ -7,7 +7,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.engine import get_session
-from app.db.models import Source
+from app.db.models import Source, Story as StoryModel
+from app.pipeline.aggregator import resolve_fetcher, source_to_config
+from app.utils.dedup import normalize_url
 
 router = APIRouter(prefix="/api", tags=["sources"])
 
@@ -139,3 +141,60 @@ async def delete_source(source_id: int, session: AsyncSession = Depends(get_sess
         raise HTTPException(404, "source not found")
     await session.delete(src)
     await session.commit()
+
+
+@router.post("/sources/{source_id}/reconcile")
+async def reconcile_source(
+    source_id: int, session: AsyncSession = Depends(get_session)
+):
+    src = await session.get(Source, source_id)
+    if not src:
+        raise HTTPException(404, "source not found")
+
+    fetcher = resolve_fetcher(src)
+    if not fetcher:
+        raise HTTPException(400, f"no fetcher for source type={src.type}")
+
+    cfg = source_to_config(src)
+    cfg["max_stories"] = max(cfg.get("max_stories", 5) * 5, 50)
+    cfg["min_score"] = 0
+    cfg["skip_keyword_filter"] = True
+
+    try:
+        available = await fetcher(cfg)
+    except Exception as e:
+        raise HTTPException(502, f"fetch failed: {e}")
+
+    result = await session.execute(
+        select(StoryModel.url_normalized, StoryModel.title, StoryModel.url).where(
+            StoryModel.source_id == source_id
+        )
+    )
+    existing_norms = {}
+    for row in result:
+        existing_norms[row[0]] = {"title": row[1], "url": row[2]}
+
+    matched = []
+    missing = []
+    for story in available:
+        norm = normalize_url(story.url)
+        if norm in existing_norms:
+            matched.append(
+                {
+                    "title": story.title,
+                    "url": story.url,
+                    "db_title": existing_norms[norm]["title"],
+                }
+            )
+        else:
+            missing.append({"title": story.title, "url": story.url})
+
+    return {
+        "source_id": source_id,
+        "source_name": src.name,
+        "available_count": len(available),
+        "matched_count": len(matched),
+        "missing_count": len(missing),
+        "matched": matched,
+        "missing": missing,
+    }

@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import { api, type SettingsMap, type SourceItem, type SourceHealthItem } from "../lib/api";
+import { api, type SettingsMap, type SourceItem, type SourceHealthItem, type ReconcileResult } from "../lib/api";
 
 function StatusBadge({ status }: { status: string }) {
   const colors: Record<string, string> = {
@@ -34,6 +34,12 @@ function SourcesSection() {
 
   const testMutation = useMutation({
     mutationFn: (sourceId: number) => api.triggerFetch(sourceId),
+  });
+
+  const [reconcileData, setReconcileData] = useState<ReconcileResult | null>(null);
+  const reconcileMutation = useMutation({
+    mutationFn: (sourceId: number) => api.reconcileSource(sourceId),
+    onSuccess: (data) => setReconcileData(data),
   });
 
   const healthMap = new Map<number, SourceHealthItem>();
@@ -89,6 +95,13 @@ function SourcesSection() {
                       Test
                     </button>
                     <button
+                      onClick={() => reconcileMutation.mutate(s.id)}
+                      disabled={reconcileMutation.isPending}
+                      className="text-xs text-hankel-accent hover:underline disabled:opacity-50"
+                    >
+                      Reconcile
+                    </button>
+                    <button
                       onClick={() => {
                         if (confirm(`Delete source "${s.name}"?`)) deleteMutation.mutate(s.id);
                       }}
@@ -125,6 +138,78 @@ function SourcesSection() {
                 <span className="ml-auto">{r.started_at?.slice(0, 16).replace("T", " ")}</span>
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {reconcileMutation.isPending && (
+        <div className="mt-2 text-xs text-hankel-muted bg-hankel-surface rounded px-3 py-2">
+          Reconciling...
+        </div>
+      )}
+
+      {reconcileData && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setReconcileData(null)} />
+          <div className="relative w-[90vw] max-w-2xl max-h-[80vh] bg-hankel-bg rounded-xl shadow-2xl overflow-hidden flex flex-col">
+            <div className="flex items-center justify-between px-4 py-3 bg-hankel-surface border-b border-hankel-bg">
+              <h3 className="text-sm font-semibold">
+                Reconcile: {reconcileData.source_name}
+              </h3>
+              <button
+                onClick={() => setReconcileData(null)}
+                className="text-hankel-muted hover:text-hankel-text text-lg"
+              >
+                &times;
+              </button>
+            </div>
+            <div className="p-4 overflow-y-auto flex-1">
+              <div className="flex gap-4 mb-4 text-sm">
+                <span className="text-hankel-muted">
+                  Available: {reconcileData.available_count}
+                </span>
+                <span className="text-green-400">
+                  Matched: {reconcileData.matched_count}
+                </span>
+                <span className="text-yellow-400">
+                  Missing: {reconcileData.missing_count}
+                </span>
+              </div>
+              {reconcileData.missing.length > 0 && (
+                <div className="mb-4">
+                  <h4 className="text-sm font-medium text-yellow-400 mb-2">
+                    Missing Articles
+                  </h4>
+                  <div className="space-y-1">
+                    {reconcileData.missing.map((item, i) => (
+                      <a
+                        key={i}
+                        href={item.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="block text-xs text-hankel-muted hover:text-hankel-accent truncate"
+                      >
+                        {item.title}
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {reconcileData.matched.length > 0 && (
+                <div>
+                  <h4 className="text-sm font-medium text-green-400 mb-2">
+                    Matched Articles
+                  </h4>
+                  <div className="space-y-1">
+                    {reconcileData.matched.map((item, i) => (
+                      <div key={i} className="text-xs text-hankel-muted truncate">
+                        {item.title}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -200,6 +285,12 @@ function SettingsForm() {
           <Toggle
             checked={merged.display_group_by_date}
             onChange={(v) => handleChange("display_group_by_date", v)}
+          />
+        </Field>
+        <Field label="Hover preview (desktop)">
+          <Toggle
+            checked={merged.hover_preview_enabled}
+            onChange={(v) => handleChange("hover_preview_enabled", v)}
           />
         </Field>
       </div>

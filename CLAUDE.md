@@ -28,11 +28,11 @@ backend/app/
   config.py            env-only: DB_PATH, DATA_DIR, SEED_PATH, EMBED_ALLOWED_ORIGINS
   security.py          CSP frame-ancestors middleware
   scheduler.py         init_scheduler, reschedule_from_db, run_fetch_job
-  db/                  engine, models, migrations, migrations_sql/001_init.sql
+  db/                  engine, models, migrations, migrations_sql/{001_init,002_add_image_url,003_add_viewed_at}.sql
   api/                 stories, sources, settings, fetch, health, embed
   pipeline/            aggregator (DB-driven run_once), persist, health_writer
   sources/             copied from ai-podcast (hackernews, rss_generic, reddit, techmeme, implicator, claude_blog, base)
-  utils/               dedup, content_scraper, logging_setup
+  utils/               dedup, content_scraper, image_extractor, logging_setup
   static/              built frontend assets (vite build output)
 frontend/src/
   pages/HeadlinesPage.tsx, SettingsPage.tsx
@@ -81,6 +81,10 @@ After that, every `git push` to main builds + deploys on its own. Don't delete t
 - **Let's Encrypt rate limits**: during initial iteration, set `ingress.enabled=false` and use `kubectl port-forward` instead of hitting the real `letsencrypt-hankel` ClusterIssuer repeatedly.
 - **HTML scrapers break silently**: techmeme + implicator are brittle. Check the `source_health` table / Settings diagnostics regularly.
 - **Content scraper thread pool**: `utils/content_scraper.py` was rewritten from ai-podcast to use `asyncio.to_thread` instead of a module-level `ThreadPoolExecutor` (which leaks in long-lived servers).
+- **Hover preview disabled on mobile**: `StoryCard.tsx` uses `matchMedia("(hover: hover)")` to detect touch devices and skip hover popup entirely. Desktop users can toggle it off via the `hover_preview_enabled` setting.
+- **Viewed/read tracking**: `stories.viewed_at` column tracks when an article was read. `PUT /api/stories/{id}/view` marks it. Cards fade to 60% opacity when viewed.
+- **Per-source reconciliation**: `POST /api/sources/{id}/reconcile` fetches all available articles from a source (bypassing keyword/score filters via `skip_keyword_filter` config flag) and compares against DB. Accessible from Settings > Sources > Reconcile button.
+- **Image extraction pipeline**: `image_extractor.py` checks og:image → twitter:image → ld+json → article/figure tags → generic img tags → Google favicon fallback. Reddit fetcher unescapes HTML entities in preview URLs and extracts images from self-post HTML. Techmeme fetcher extracts inline cluster images.
 
 ## Related Projects
 - `../ai-podcast` — original source; kept unchanged as the podcast version

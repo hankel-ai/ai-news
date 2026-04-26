@@ -59,6 +59,7 @@ class Story(Base):
     keywords_matched: Mapped[str | None] = mapped_column(String, nullable=True)  # JSON array
     image_url: Mapped[str | None] = mapped_column(String, nullable=True)
     first_seen_at: Mapped[str] = mapped_column(String, nullable=False, default=_now)
+    viewed_at: Mapped[str | None] = mapped_column(String, nullable=True)
 
     source: Mapped[Source] = relationship(back_populates="stories")
 
