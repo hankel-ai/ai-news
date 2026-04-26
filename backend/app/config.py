@@ -23,6 +23,8 @@ class Settings(BaseSettings):
     llm_base_url: str = ""
     llm_api_key: str = ""
 
+    # -- embed --
+
     @property
     def embed_origins_list(self) -> list[str]:
         return [o.strip() for o in self.embed_allowed_origins.split(",") if o.strip()]
