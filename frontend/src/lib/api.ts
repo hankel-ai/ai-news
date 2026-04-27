@@ -161,4 +161,15 @@ export const api = {
     request<{ analyzed: number; message?: string }>("/api/analyze", {
       method: "POST",
     }),
+  analyzeStory: (storyId: number) =>
+    request<{
+      id: number;
+      ok: boolean;
+      duration_ms: number;
+      error?: string;
+      ai_summary?: string | null;
+      relevance_score?: number | null;
+      topics?: string[];
+      analyzed_at?: string | null;
+    }>(`/api/stories/${storyId}/analyze`, { method: "POST" }),
 };

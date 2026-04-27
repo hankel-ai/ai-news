@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, type StoryItem } from "../lib/api";
 
@@ -33,14 +34,37 @@ interface StoryRowProps {
 
 export default function StoryRow({ story, expanded, onToggle }: StoryRowProps) {
   const qc = useQueryClient();
+  const [analyzeError, setAnalyzeError] = useState<string | null>(null);
+  const [analyzeMs, setAnalyzeMs] = useState<number | null>(null);
+
   const viewMut = useMutation({
     mutationFn: () => api.markViewed(story.id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["stories"] }),
   });
 
+  const analyzeMut = useMutation({
+    mutationFn: () => api.analyzeStory(story.id),
+    onSuccess: (data) => {
+      setAnalyzeMs(data.duration_ms);
+      if (data.ok) {
+        setAnalyzeError(null);
+        qc.invalidateQueries({ queryKey: ["stories"] });
+      } else {
+        setAnalyzeError(data.error || "unknown error");
+      }
+    },
+    onError: (err) => setAnalyzeError((err as Error).message),
+  });
+
   const handleClick = () => {
     if (!story.viewed_at) viewMut.mutate();
     window.open(story.url, "_blank", "noopener");
+  };
+
+  const handleAnalyze = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setAnalyzeError(null);
+    analyzeMut.mutate();
   };
 
   const hasAnalysis = story.ai_summary || story.relevance_score !== null;
@@ -65,6 +89,14 @@ export default function StoryRow({ story, expanded, onToggle }: StoryRowProps) {
         <span className="shrink-0 text-xs text-hankel-muted">
           {timeAgo(story.first_seen_at)}
         </span>
+        <button
+          onClick={handleAnalyze}
+          disabled={analyzeMut.isPending}
+          title={hasAnalysis ? "Re-analyze with LLM" : "Analyze with LLM"}
+          className="shrink-0 text-xs text-hankel-muted hover:text-hankel-accent disabled:opacity-50"
+        >
+          {analyzeMut.isPending ? "⏳" : "✨"}
+        </button>
         {hasAnalysis && (
           <button
             onClick={onToggle}
@@ -74,6 +106,15 @@ export default function StoryRow({ story, expanded, onToggle }: StoryRowProps) {
           </button>
         )}
       </div>
+      {(analyzeError || (analyzeMs !== null && !analyzeMut.isPending)) && (
+        <div className="px-4 pb-2 text-[10px] text-hankel-muted pl-[36px]">
+          {analyzeError ? (
+            <span className="text-red-400">analyze failed in {analyzeMs ?? "?"}ms — {analyzeError}</span>
+          ) : (
+            <span className="text-green-400">analyzed in {analyzeMs}ms</span>
+          )}
+        </div>
+      )}
       {expanded && hasAnalysis && (
         <div className="pl-[36px] pr-4 pb-3">
           {story.topics.length > 0 && (

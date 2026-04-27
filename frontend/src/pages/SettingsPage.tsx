@@ -424,7 +424,7 @@ function SettingsForm() {
             className="input-field"
           />
         </Field>
-        <Field label="Analysis enabled">
+        <Field label="Auto-analyze on fetch">
           <Toggle
             checked={!!(merged as Record<string, unknown>).analysis_enabled}
             onChange={(v) => handleChange("analysis_enabled", v)}

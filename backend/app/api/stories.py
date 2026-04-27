@@ -1,6 +1,7 @@
 import json
 import logging
 import re
+import time
 from datetime import datetime, timezone
 from urllib.parse import urlparse
 
@@ -11,7 +12,9 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.engine import get_session
-from app.db.models import Story
+from app.db.models import Setting, Story
+from app.llm import get_provider
+from app.pipeline.analyzer import analyze_stories
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["stories"])
@@ -111,6 +114,50 @@ async def mark_viewed(story_id: int, session: AsyncSession = Depends(get_session
         story.viewed_at = datetime.now(timezone.utc).isoformat()
         await session.commit()
     return {"id": story.id, "viewed_at": story.viewed_at}
+
+
+async def _setting(session: AsyncSession, key: str, default: str) -> str:
+    row = (await session.execute(select(Setting.value).where(Setting.key == key))).scalar_one_or_none()
+    return row if row is not None else default
+
+
+@router.post("/stories/{story_id}/analyze")
+async def analyze_story(story_id: int, session: AsyncSession = Depends(get_session)):
+    story = await session.get(Story, story_id)
+    if not story:
+        raise HTTPException(404, "story not found")
+
+    llm_provider = await _setting(session, "llm_provider", "ollama")
+    llm_model = await _setting(session, "llm_model", "llama3.2")
+    llm_base_url = await _setting(session, "llm_base_url", "")
+    llm_api_key = await _setting(session, "llm_api_key", "")
+
+    provider = get_provider(
+        provider_name=llm_provider, model=llm_model,
+        base_url=llm_base_url, api_key=llm_api_key,
+    )
+    t0 = time.monotonic()
+    try:
+        await analyze_stories(session, [story_id], provider, breaking_threshold=999)
+        await session.commit()
+    except Exception as e:
+        logger.exception("per-story analyze failed for id=%d", story_id)
+        return {
+            "id": story_id, "ok": False,
+            "error": f"{type(e).__name__}: {e}",
+            "duration_ms": int((time.monotonic() - t0) * 1000),
+        }
+
+    await session.refresh(story)
+    return {
+        "id": story_id,
+        "ok": True,
+        "duration_ms": int((time.monotonic() - t0) * 1000),
+        "ai_summary": story.ai_summary,
+        "relevance_score": story.relevance_score,
+        "topics": json.loads(story.topics) if story.topics else [],
+        "analyzed_at": story.analyzed_at,
+    }
 
 
 _STRIP_HEADERS = {
