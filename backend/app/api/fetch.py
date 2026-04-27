@@ -70,6 +70,7 @@ async def trigger_analyze(session: AsyncSession = Depends(get_session)):
         await analyze_stories(session, unanalyzed_ids, provider, breaking_threshold)
         await session.commit()
     except Exception as e:
-        return {"analyzed": 0, "error": str(e)}
+        logger.exception("manual /api/analyze failed")
+        return {"analyzed": 0, "error": f"{type(e).__name__}: {e}"}
 
     return {"analyzed": len(unanalyzed_ids), "message": f"Analyzed {len(unanalyzed_ids)} stories"}

@@ -9,7 +9,7 @@ class OllamaProvider(LLMProvider):
         self._client = client
 
     async def complete(self, prompt: str, system: str = "") -> str:
-        client = self._client or httpx.AsyncClient(timeout=120)
+        client = self._client or httpx.AsyncClient(timeout=600)
         try:
             messages = []
             if system:
