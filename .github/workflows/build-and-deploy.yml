@@ -3,13 +3,6 @@ name: Build and Deploy
 on:
   push:
     branches: ['*']
-    paths:
-      - 'frontend/**'
-      - 'backend/**'
-      - 'docker/**'
-      - 'helm/**'
-      - 'requirements.txt'
-      - '.github/workflows/**'
   workflow_dispatch:
 
 jobs:
