@@ -269,20 +269,6 @@ function SettingsForm() {
     setDraft((prev) => ({ ...prev, [key]: value }));
   }
 
-  function handleRequestPermission() {
-    if (!("Notification" in window)) {
-      alert("This browser does not support notifications.");
-      return;
-    }
-    Notification.requestPermission().then((perm) => {
-      if (perm === "granted") {
-        alert("Notifications enabled!");
-      } else {
-        alert(`Notification permission: ${perm}`);
-      }
-    });
-  }
-
   function handleTestConnection() {
     testConnectionMutation.mutate(undefined, {
       onSuccess: (data) => {
@@ -430,16 +416,6 @@ function SettingsForm() {
             onChange={(v) => handleChange("analysis_enabled", v)}
           />
         </Field>
-        <Field label="Breaking threshold">
-          <input
-            type="number"
-            min={1}
-            max={100}
-            value={Number((merged as Record<string, unknown>).breaking_threshold ?? 3)}
-            onChange={(e) => handleChange("breaking_threshold", Number(e.target.value))}
-            className="input-field"
-          />
-        </Field>
         <Field label="">
           <button
             onClick={handleTestConnection}
@@ -447,25 +423,6 @@ function SettingsForm() {
             className="px-4 py-2 bg-hankel-surface text-hankel-text rounded-lg text-sm font-medium border border-white/10 hover:border-hankel-accent hover:text-hankel-accent disabled:opacity-50 transition"
           >
             {testConnectionMutation.isPending ? "Testing..." : "Test Connection"}
-          </button>
-        </Field>
-      </div>
-
-      {/* Notifications */}
-      <h3 className="text-sm font-medium text-hankel-muted mb-2 mt-6 uppercase tracking-wider">Notifications</h3>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <Field label="Browser notifications">
-          <Toggle
-            checked={!!(merged as Record<string, unknown>).notifications_enabled}
-            onChange={(v) => handleChange("notifications_enabled", v)}
-          />
-        </Field>
-        <Field label="">
-          <button
-            onClick={handleRequestPermission}
-            className="px-4 py-2 bg-hankel-surface text-hankel-text rounded-lg text-sm font-medium border border-white/10 hover:border-hankel-accent hover:text-hankel-accent transition"
-          >
-            Request Permission
           </button>
         </Field>
       </div>

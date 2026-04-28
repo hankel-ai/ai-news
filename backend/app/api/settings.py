@@ -24,13 +24,10 @@ DEFAULTS = {
     "llm_base_url": "",
     "llm_api_key": "",
     "analysis_enabled": "true",
-    "breaking_threshold": "3",
     # display settings
     "display_expand_summaries": "false",
     "display_sort_by": "relevance",
     "display_score_threshold": "0",
-    # notification settings
-    "notifications_enabled": "true",
 }
 
 

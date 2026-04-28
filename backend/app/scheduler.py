@@ -42,11 +42,6 @@ async def _run_fetch_job() -> None:
         llm_model = await _get_setting(session, "llm_model", "llama3.2")
         llm_base_url = await _get_setting(session, "llm_base_url", "")
         llm_api_key = await _get_setting(session, "llm_api_key", "")
-        breaking_raw = await _get_setting(session, "breaking_threshold", "3")
-        try:
-            breaking_threshold = int(breaking_raw)
-        except ValueError:
-            breaking_threshold = 3
 
         await run_once(
             session,
@@ -57,7 +52,6 @@ async def _run_fetch_job() -> None:
             llm_model=llm_model,
             llm_base_url=llm_base_url,
             llm_api_key=llm_api_key,
-            breaking_threshold=breaking_threshold,
         )
 
 

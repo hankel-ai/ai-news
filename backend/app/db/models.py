@@ -111,13 +111,3 @@ class SourceHealth(Base):
     error: Mapped[str | None] = mapped_column(String, nullable=True)
 
 
-class Trend(Base):
-    __tablename__ = "trends"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    topic: Mapped[str] = mapped_column(Text, nullable=False)
-    severity: Mapped[str] = mapped_column(Text, nullable=False, default="normal")
-    story_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    detected_at: Mapped[str] = mapped_column(Text, nullable=False, default=_now)
-    expires_at: Mapped[str] = mapped_column(Text, nullable=False)
-    notified: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

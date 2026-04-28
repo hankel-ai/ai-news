@@ -108,19 +108,6 @@ export interface ReconcileResult {
   missing: { title: string; url: string }[];
 }
 
-export interface AlertItem {
-  id: number;
-  topic: string;
-  severity: "normal" | "trending" | "breaking";
-  story_count: number;
-  detected_at: string;
-  expires_at: string;
-}
-
-export interface AlertsResponse {
-  items: AlertItem[];
-}
-
 export const api = {
   getStories: (params?: string) =>
     request<StoriesResponse>(`/api/stories${params ? `?${params}` : ""}`),
@@ -150,12 +137,6 @@ export const api = {
   reconcileSource: (sourceId: number) =>
     request<ReconcileResult>(`/api/sources/${sourceId}/reconcile`, {
       method: "POST",
-    }),
-  getPendingAlerts: () =>
-    request<AlertsResponse>("/api/alerts/pending"),
-  ackAlert: (alertId: number) =>
-    request<{ id: number; notified: boolean }>(`/api/alerts/${alertId}/ack`, {
-      method: "PUT",
     }),
   triggerAnalyze: () =>
     request<{ analyzed: number; message?: string }>("/api/analyze", {

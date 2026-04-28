@@ -48,11 +48,6 @@ async def trigger_analyze(session: AsyncSession = Depends(get_session)):
     llm_model = await _get_setting(session, "llm_model", "llama3.2")
     llm_base_url = await _get_setting(session, "llm_base_url", "")
     llm_api_key = await _get_setting(session, "llm_api_key", "")
-    breaking_raw = await _get_setting(session, "breaking_threshold", "3")
-    try:
-        breaking_threshold = int(breaking_raw)
-    except ValueError:
-        breaking_threshold = 3
 
     result = await session.execute(
         select(Story.id).where(Story.analyzed_at.is_(None)).limit(200)
@@ -67,7 +62,7 @@ async def trigger_analyze(session: AsyncSession = Depends(get_session)):
         base_url=llm_base_url, api_key=llm_api_key,
     )
     try:
-        await analyze_stories(session, unanalyzed_ids, provider, breaking_threshold)
+        await analyze_stories(session, unanalyzed_ids, provider)
         await session.commit()
     except Exception as e:
         logger.exception("manual /api/analyze failed")

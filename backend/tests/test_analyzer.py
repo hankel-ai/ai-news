@@ -1,10 +1,10 @@
 import json
 import pytest
 import pytest_asyncio
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 
-from app.db.models import Base, Story, Source, Trend, Setting
+from app.db.models import Base, Story, Source
 from app.llm.base import LLMProvider
 from app.pipeline.analyzer import analyze_stories, SYSTEM_PROMPT
 
@@ -52,10 +52,9 @@ async def test_analyze_stories_populates_ai_fields(db_session):
 
     mock_response = {
         "stories": [{"id": story.id, "summary": "Anthropic releases Claude 4 with major improvements.", "score": 88, "topics": ["llm-release"]}],
-        "trends": [{"topic": "llm-release", "severity": "trending", "count": 3}],
     }
     provider = MockProvider(mock_response)
-    await analyze_stories(db_session, [story.id], provider, breaking_threshold=3)
+    await analyze_stories(db_session, [story.id], provider)
 
     await db_session.refresh(story)
     assert story.ai_summary == "Anthropic releases Claude 4 with major improvements."
@@ -64,40 +63,8 @@ async def test_analyze_stories_populates_ai_fields(db_session):
     assert story.analyzed_at is not None
 
 
-@pytest.mark.asyncio
-async def test_analyze_stories_creates_trend(db_session):
-    source = Source(
-        key="test2", name="Test2", type="rss", url="http://test2.com",
-        enabled=1, created_at=_now_iso(), updated_at=_now_iso(),
-    )
-    db_session.add(source)
-    await db_session.flush()
-
-    story = Story(
-        source_id=source.id, title="Breaking News", url="http://test2.com/1",
-        url_normalized="test2.com/1", source_name="Test2", first_seen_at=_now_iso(),
-    )
-    db_session.add(story)
-    await db_session.flush()
-
-    mock_response = {
-        "stories": [{"id": story.id, "summary": "Big news.", "score": 95, "topics": ["llm-release"]}],
-        "trends": [{"topic": "llm-release", "severity": "breaking", "count": 5}],
-    }
-    provider = MockProvider(mock_response)
-    await analyze_stories(db_session, [story.id], provider, breaking_threshold=3)
-
-    from sqlalchemy import select
-    result = await db_session.execute(select(Trend).where(Trend.severity == "breaking"))
-    trend = result.scalar_one()
-    assert trend.topic == "llm-release"
-    assert trend.story_count == 5
-    assert trend.notified == 0
-
-
 def test_system_prompt_requests_json():
     assert "JSON" in SYSTEM_PROMPT
     assert "summary" in SYSTEM_PROMPT
     assert "score" in SYSTEM_PROMPT
     assert "topics" in SYSTEM_PROMPT
-    assert "trends" in SYSTEM_PROMPT

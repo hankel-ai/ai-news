@@ -98,7 +98,6 @@ async def run_once(
     llm_model: str = "llama3.2",
     llm_base_url: str = "",
     llm_api_key: str = "",
-    breaking_threshold: int = 3,
 ) -> FetchRun:
     """Execute one fetch cycle.
 
@@ -180,7 +179,7 @@ async def run_once(
             )
             new_ids = [row[0] for row in unanalyzed.fetchall()]
             if new_ids:
-                await analyze_stories(session, new_ids, provider, breaking_threshold)
+                await analyze_stories(session, new_ids, provider)
                 await session.commit()
         except Exception:
             logger.exception("AI analysis failed — stories saved without analysis")

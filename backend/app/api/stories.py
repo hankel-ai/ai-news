@@ -138,7 +138,7 @@ async def analyze_story(story_id: int, session: AsyncSession = Depends(get_sessi
     )
     t0 = time.monotonic()
     try:
-        await analyze_stories(session, [story_id], provider, breaking_threshold=999)
+        await analyze_stories(session, [story_id], provider)
         await session.commit()
     except Exception as e:
         logger.exception("per-story analyze failed for id=%d", story_id)

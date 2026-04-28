@@ -1,9 +1,8 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { api, type StoryItem, type SettingsMap } from "../lib/api";
 import StoryRow from "../components/StoryRow";
 import FilterBar from "../components/FilterBar";
-import TrendBanner from "../components/TrendBanner";
 
 function dateLabel(iso: string): string {
   const d = new Date(iso);
@@ -75,12 +74,6 @@ export default function HeadlinesPage() {
     queryFn: api.getSettings,
   });
 
-  const alertsQ = useQuery({
-    queryKey: ["alerts"],
-    queryFn: api.getPendingAlerts,
-    refetchInterval: 60_000,
-  });
-
   // Mutations
   const fetchMut = useMutation({
     mutationFn: () => api.triggerFetch(),
@@ -97,22 +90,6 @@ export default function HeadlinesPage() {
     if (s.display_sort_by) setSortBy(String(s.display_sort_by));
     if (s.display_score_threshold) setScoreThreshold(Number(s.display_score_threshold));
   }, [settingsQ.data]);
-
-  // Browser notifications for breaking alerts
-  const alerts = alertsQ.data?.items ?? [];
-  const notifiedRef = useRef<Set<number>>(new Set());
-  useEffect(() => {
-    if (!alerts.length) return;
-    if (!("Notification" in window) || Notification.permission !== "granted") return;
-    const notificationsEnabled = (settingsQ.data as any)?.notifications_enabled;
-    if (notificationsEnabled === false || notificationsEnabled === "false") return;
-    for (const alert of alerts) {
-      if (alert.severity !== "breaking") continue;
-      if (notifiedRef.current.has(alert.id)) continue;
-      notifiedRef.current.add(alert.id);
-      new Notification("AI News — Breaking", { body: `${alert.topic}: ${alert.story_count} stories` });
-    }
-  }, [alerts, settingsQ.data]);
 
   // Group by date (settings-driven)
   const groupByDateEnabled = (settingsQ.data as SettingsMap | undefined)?.display_group_by_date ?? true;
@@ -149,15 +126,6 @@ export default function HeadlinesPage() {
 
   return (
     <div>
-      {/* Trend banners */}
-      <TrendBanner
-        alerts={alerts}
-        onTopicClick={(topic) => {
-          setTopicFilter(topic);
-          setOffset(0);
-        }}
-      />
-
       {/* Header bar */}
       <div className="flex items-center gap-3 mb-4">
         <button
