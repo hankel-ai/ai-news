@@ -2,6 +2,20 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { api, type SettingsMap, type SourceItem, type SourceHealthItem, type ReconcileResult } from "../lib/api";
 
+function sourceWebsiteUrl(s: SourceItem): string | null {
+  if (s.url) {
+    try {
+      return new URL(s.url).origin;
+    } catch {
+      return s.url;
+    }
+  }
+  if (s.subreddit) return `https://reddit.com/r/${s.subreddit}`;
+  if (s.key === "hackernews") return "https://news.ycombinator.com";
+  if (s.key === "claude_blog") return "https://www.anthropic.com/news";
+  return null;
+}
+
 function StatusBadge({ status }: { status: string }) {
   const colors: Record<string, string> = {
     healthy: "bg-green-900 text-green-300",
@@ -79,7 +93,23 @@ function SourcesSection() {
                       <span className={`block w-3.5 h-3.5 bg-white rounded-full absolute top-0.5 transition-all ${s.enabled ? "left-4" : "left-0.5"}`} />
                     </button>
                   </td>
-                  <td className="py-2 pr-3 font-medium">{s.name}</td>
+                  <td className="py-2 pr-3 font-medium">
+                    {(() => {
+                      const href = sourceWebsiteUrl(s);
+                      return href ? (
+                        <a
+                          href={href}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="hover:text-hankel-accent hover:underline"
+                        >
+                          {s.name}
+                        </a>
+                      ) : (
+                        s.name
+                      );
+                    })()}
+                  </td>
                   <td className="py-2 pr-3 text-hankel-muted">{s.type}</td>
                   <td className="py-2 pr-3">
                     <MaxStoriesInput
@@ -258,7 +288,7 @@ function SettingsForm() {
   });
 
   const testConnectionMutation = useMutation({
-    mutationFn: () => api.triggerAnalyze(),
+    mutationFn: () => api.pingLLM(),
   });
 
   if (isLoading || !settings) return <p className="text-hankel-muted">Loading settings...</p>;
@@ -272,7 +302,11 @@ function SettingsForm() {
   function handleTestConnection() {
     testConnectionMutation.mutate(undefined, {
       onSuccess: (data) => {
-        alert(`Connection OK — analyzed ${data.analyzed} stories${data.message ? `: ${data.message}` : ""}`);
+        if (data.ok) {
+          alert(`Connection OK in ${data.duration_ms}ms — ${data.model} replied: "${data.reply}"`);
+        } else {
+          alert(`Connection failed in ${data.duration_ms}ms — ${data.error}`);
+        }
       },
       onError: (err) => {
         alert(`Connection failed: ${(err as Error).message}`);

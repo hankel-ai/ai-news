@@ -142,6 +142,14 @@ export const api = {
     request<{ analyzed: number; message?: string }>("/api/analyze", {
       method: "POST",
     }),
+  pingLLM: () =>
+    request<{
+      ok: boolean;
+      duration_ms: number;
+      model?: string;
+      reply?: string;
+      error?: string;
+    }>("/api/llm/ping", { method: "POST" }),
   analyzeStory: (storyId: number) =>
     request<{
       id: number;

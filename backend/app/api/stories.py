@@ -28,7 +28,7 @@ async def list_stories(
     since: str | None = None,
     until: str | None = None,
     q: str | None = None,
-    sort_by: str = "relevance",
+    sort_by: str = "newest",
     min_score: int | None = None,
     topics: str | None = None,
     unread_only: bool = False,

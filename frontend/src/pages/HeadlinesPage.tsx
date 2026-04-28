@@ -36,7 +36,7 @@ export default function HeadlinesPage() {
   const qc = useQueryClient();
 
   // State
-  const [sortBy, setSortBy] = useState("relevance");
+  const [sortBy, setSortBy] = useState("newest");
   const [sourceFilter, setSourceFilter] = useState<number | "">("");
   const [topicFilter, setTopicFilter] = useState("");
   const [scoreThreshold, setScoreThreshold] = useState(0);
@@ -51,7 +51,7 @@ export default function HeadlinesPage() {
   const params = new URLSearchParams();
   params.set("limit", String(limit));
   params.set("offset", String(offset));
-  if (sortBy !== "relevance") params.set("sort_by", sortBy);
+  if (sortBy !== "newest") params.set("sort_by", sortBy);
   if (sourceFilter !== "") params.set("source_id", String(sourceFilter));
   if (topicFilter) params.set("topics", topicFilter);
   if (scoreThreshold > 0) params.set("min_score", String(scoreThreshold));

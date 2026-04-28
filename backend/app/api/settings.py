@@ -26,7 +26,7 @@ DEFAULTS = {
     "analysis_enabled": "true",
     # display settings
     "display_expand_summaries": "false",
-    "display_sort_by": "relevance",
+    "display_sort_by": "newest",
     "display_score_threshold": "0",
 }
 

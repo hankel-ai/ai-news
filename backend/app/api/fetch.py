@@ -41,6 +41,37 @@ async def _get_setting(session: AsyncSession, key: str, default: str) -> str:
     return row if row is not None else default
 
 
+@router.post("/llm/ping")
+async def llm_ping(session: AsyncSession = Depends(get_session)):
+    """Quick LLM connectivity check — sends a 3-token prompt and returns timing."""
+    import time
+
+    llm_provider = await _get_setting(session, "llm_provider", "ollama")
+    llm_model = await _get_setting(session, "llm_model", "llama3.2")
+    llm_base_url = await _get_setting(session, "llm_base_url", "")
+    llm_api_key = await _get_setting(session, "llm_api_key", "")
+
+    provider = get_provider(
+        provider_name=llm_provider, model=llm_model,
+        base_url=llm_base_url, api_key=llm_api_key,
+    )
+    t0 = time.monotonic()
+    try:
+        reply = await provider.complete("Reply with just OK.", system="")
+    except Exception as e:
+        return {
+            "ok": False,
+            "duration_ms": int((time.monotonic() - t0) * 1000),
+            "error": f"{type(e).__name__}: {e}",
+        }
+    return {
+        "ok": True,
+        "duration_ms": int((time.monotonic() - t0) * 1000),
+        "model": llm_model,
+        "reply": reply.strip()[:200],
+    }
+
+
 @router.post("/analyze")
 async def trigger_analyze(session: AsyncSession = Depends(get_session)):
     """Manually trigger AI analysis on all unanalyzed stories."""
