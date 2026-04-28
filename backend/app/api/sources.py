@@ -9,7 +9,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.engine import get_session
 from app.db.models import Source, Story as StoryModel
 from app.pipeline.aggregator import resolve_fetcher, source_to_config
+from app.pipeline.persist import save_stories
 from app.utils.dedup import normalize_url
+from app.utils.image_extractor import fetch_images
 
 router = APIRouter(prefix="/api", tags=["sources"])
 
@@ -197,4 +199,53 @@ async def reconcile_source(
         "missing_count": len(missing),
         "matched": matched,
         "missing": missing,
+    }
+
+
+@router.post("/sources/{source_id}/reconcile/import")
+async def reconcile_import(
+    source_id: int, session: AsyncSession = Depends(get_session)
+):
+    src = await session.get(Source, source_id)
+    if not src:
+        raise HTTPException(404, "source not found")
+
+    fetcher = resolve_fetcher(src)
+    if not fetcher:
+        raise HTTPException(400, f"no fetcher for source type={src.type}")
+
+    cfg = source_to_config(src)
+    cfg["max_stories"] = max(cfg.get("max_stories", 5) * 5, 50)
+    cfg["min_score"] = 0
+    cfg["skip_keyword_filter"] = True
+
+    try:
+        available = await fetcher(cfg)
+    except Exception as e:
+        raise HTTPException(502, f"fetch failed: {e}")
+
+    result = await session.execute(
+        select(StoryModel.url_normalized).where(StoryModel.source_id == source_id)
+    )
+    existing = {row[0] for row in result}
+
+    missing_stories = [s for s in available if normalize_url(s.url) not in existing]
+    if not missing_stories:
+        return {
+            "source_id": source_id,
+            "source_name": src.name,
+            "available_count": len(available),
+            "imported": 0,
+        }
+
+    await fetch_images(missing_stories)
+    pairs = [(src, s) for s in missing_stories]
+    inserted = await save_stories(session, pairs)
+    await session.commit()
+
+    return {
+        "source_id": source_id,
+        "source_name": src.name,
+        "available_count": len(available),
+        "imported": inserted,
     }

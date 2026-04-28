@@ -56,8 +56,43 @@ function SourcesSection() {
     onSuccess: (data) => setReconcileData(data),
   });
 
-  const analyzeMutation = useMutation({
-    mutationFn: () => api.triggerAnalyze(),
+  const [analyzeState, setAnalyzeState] = useState<{
+    running: boolean;
+    done: number;
+    remaining: number | null;
+    error: string | null;
+    lastBatchMs: number | null;
+  }>({ running: false, done: 0, remaining: null, error: null, lastBatchMs: null });
+
+  async function runAnalyze() {
+    setAnalyzeState({ running: true, done: 0, remaining: null, error: null, lastBatchMs: null });
+    let done = 0;
+    while (true) {
+      let r;
+      try {
+        r = await api.triggerAnalyze(20);
+      } catch (e) {
+        setAnalyzeState({ running: false, done, remaining: null, error: (e as Error).message, lastBatchMs: null });
+        return;
+      }
+      done += r.analyzed;
+      if (!r.ok) {
+        setAnalyzeState({ running: false, done, remaining: r.remaining, error: r.error ?? "unknown error", lastBatchMs: r.duration_ms });
+        qc.invalidateQueries({ queryKey: ["stories"] });
+        return;
+      }
+      setAnalyzeState({ running: r.remaining > 0, done, remaining: r.remaining, error: null, lastBatchMs: r.duration_ms });
+      if (r.remaining === 0) break;
+    }
+    qc.invalidateQueries({ queryKey: ["stories"] });
+  }
+
+  const importMissingMutation = useMutation({
+    mutationFn: (sourceId: number) => api.importMissingFromSource(sourceId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["stories"] });
+      setReconcileData(null);
+    },
   });
 
   const healthMap = new Map<number, SourceHealthItem>();
@@ -162,22 +197,20 @@ function SourcesSection() {
           <div className="flex items-center justify-between mb-2">
             <h3 className="text-sm font-medium text-hankel-muted">Recent Fetch Runs</h3>
             <button
-              onClick={() => analyzeMutation.mutate()}
-              disabled={analyzeMutation.isPending}
+              onClick={runAnalyze}
+              disabled={analyzeState.running}
               className="text-xs text-hankel-accent hover:underline disabled:opacity-50"
             >
-              {analyzeMutation.isPending ? "Analyzing..." : "Re-analyze"}
+              {analyzeState.running ? "Analyzing..." : "Re-analyze"}
             </button>
           </div>
-          {analyzeMutation.isSuccess && analyzeMutation.data && (
-            <div className="mb-2 text-xs text-green-400 bg-hankel-surface rounded px-3 py-1.5">
-              Analyzed {analyzeMutation.data.analyzed} stories
-              {analyzeMutation.data.message && ` — ${analyzeMutation.data.message}`}
-            </div>
-          )}
-          {analyzeMutation.isError && (
-            <div className="mb-2 text-xs text-red-400 bg-hankel-surface rounded px-3 py-1.5">
-              Analysis failed: {(analyzeMutation.error as Error).message}
+          {(analyzeState.running || analyzeState.done > 0 || analyzeState.error) && (
+            <div className={`mb-2 text-xs bg-hankel-surface rounded px-3 py-1.5 ${analyzeState.error ? "text-red-400" : "text-green-400"}`}>
+              {analyzeState.running
+                ? `Analyzed ${analyzeState.done}, ${analyzeState.remaining ?? "?"} remaining${analyzeState.lastBatchMs ? ` (last batch ${analyzeState.lastBatchMs}ms)` : ""}`
+                : analyzeState.error
+                  ? `Stopped after ${analyzeState.done} — ${analyzeState.error}`
+                  : `Done — analyzed ${analyzeState.done} stories`}
             </div>
           )}
           <div className="space-y-1">
@@ -210,12 +243,25 @@ function SourcesSection() {
               <h3 className="text-sm font-semibold">
                 Reconcile: {reconcileData.source_name}
               </h3>
-              <button
-                onClick={() => setReconcileData(null)}
-                className="text-hankel-muted hover:text-hankel-text text-lg"
-              >
-                &times;
-              </button>
+              <div className="flex items-center gap-3">
+                {reconcileData.missing_count > 0 && (
+                  <button
+                    onClick={() => importMissingMutation.mutate(reconcileData.source_id)}
+                    disabled={importMissingMutation.isPending}
+                    className="text-xs px-3 py-1 bg-hankel-accent text-hankel-bg rounded hover:brightness-110 disabled:opacity-50 transition"
+                  >
+                    {importMissingMutation.isPending
+                      ? "Importing..."
+                      : `Import ${reconcileData.missing_count} Missing`}
+                  </button>
+                )}
+                <button
+                  onClick={() => setReconcileData(null)}
+                  className="text-hankel-muted hover:text-hankel-text text-lg"
+                >
+                  &times;
+                </button>
+              </div>
             </div>
             <div className="p-4 overflow-y-auto flex-1">
               <div className="flex gap-4 mb-4 text-sm">

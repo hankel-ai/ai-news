@@ -138,10 +138,21 @@ export const api = {
     request<ReconcileResult>(`/api/sources/${sourceId}/reconcile`, {
       method: "POST",
     }),
-  triggerAnalyze: () =>
-    request<{ analyzed: number; message?: string }>("/api/analyze", {
-      method: "POST",
-    }),
+  importMissingFromSource: (sourceId: number) =>
+    request<{
+      source_id: number;
+      source_name: string;
+      available_count: number;
+      imported: number;
+    }>(`/api/sources/${sourceId}/reconcile/import`, { method: "POST" }),
+  triggerAnalyze: (limit = 20) =>
+    request<{
+      analyzed: number;
+      remaining: number;
+      duration_ms: number;
+      ok: boolean;
+      error?: string;
+    }>(`/api/analyze?limit=${limit}`, { method: "POST" }),
   pingLLM: () =>
     request<{
       ok: boolean;

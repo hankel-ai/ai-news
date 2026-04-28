@@ -11,13 +11,6 @@ function timeAgo(iso: string): string {
   return `${Math.floor(hrs / 24)}d ago`;
 }
 
-function scoreBadgeColor(score: number | null): string {
-  if (score === null) return "bg-hankel-muted/30 text-hankel-muted";
-  if (score >= 75) return "bg-green-500 text-black";
-  if (score >= 50) return "bg-yellow-500 text-black";
-  return "bg-hankel-muted text-black";
-}
-
 function sourceHostname(url: string): string {
   try {
     return new URL(url).hostname.replace(/^www\./, "");
@@ -72,11 +65,6 @@ export default function StoryRow({ story, expanded, onToggle }: StoryRowProps) {
   return (
     <div className={`border-b border-white/5 ${story.viewed_at ? "opacity-50" : ""}`}>
       <div className="flex items-center gap-2.5 px-4 py-3">
-        <span
-          className={`shrink-0 rounded px-1.5 py-0.5 text-xs font-bold ${scoreBadgeColor(story.relevance_score)}`}
-        >
-          {story.relevance_score ?? "—"}
-        </span>
         <button
           onClick={handleClick}
           className="flex-1 text-left text-sm font-medium text-hankel-text hover:text-hankel-accent truncate"
@@ -107,7 +95,7 @@ export default function StoryRow({ story, expanded, onToggle }: StoryRowProps) {
         )}
       </div>
       {(analyzeError || (analyzeMs !== null && !analyzeMut.isPending)) && (
-        <div className="px-4 pb-2 text-[10px] text-hankel-muted pl-[36px]">
+        <div className="px-4 pb-2 text-[10px] text-hankel-muted">
           {analyzeError ? (
             <span className="text-red-400">analyze failed in {analyzeMs ?? "?"}ms — {analyzeError}</span>
           ) : (
@@ -116,9 +104,9 @@ export default function StoryRow({ story, expanded, onToggle }: StoryRowProps) {
         </div>
       )}
       {expanded && hasAnalysis && (
-        <div className="pl-[36px] pr-4 pb-3">
-          {story.topics.length > 0 && (
-            <div className="flex gap-1.5 mb-2 flex-wrap">
+        <div className="pl-4 pr-4 pb-3">
+          {(story.topics.length > 0 || story.relevance_score !== null) && (
+            <div className="flex items-center gap-1.5 mb-2 flex-wrap">
               {story.topics.map((t) => (
                 <span
                   key={t}
@@ -127,6 +115,11 @@ export default function StoryRow({ story, expanded, onToggle }: StoryRowProps) {
                   {t}
                 </span>
               ))}
+              {story.relevance_score !== null && (
+                <span className="text-[10px] text-hankel-muted ml-1">
+                  score {story.relevance_score}
+                </span>
+              )}
             </div>
           )}
           {story.ai_summary && (

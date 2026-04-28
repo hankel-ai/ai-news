@@ -1,7 +1,8 @@
 import logging
+import time
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.engine import get_session
@@ -44,8 +45,6 @@ async def _get_setting(session: AsyncSession, key: str, default: str) -> str:
 @router.post("/llm/ping")
 async def llm_ping(session: AsyncSession = Depends(get_session)):
     """Quick LLM connectivity check — sends a 3-token prompt and returns timing."""
-    import time
-
     llm_provider = await _get_setting(session, "llm_provider", "ollama")
     llm_model = await _get_setting(session, "llm_model", "llama3.2")
     llm_base_url = await _get_setting(session, "llm_base_url", "")
@@ -73,30 +72,49 @@ async def llm_ping(session: AsyncSession = Depends(get_session)):
 
 
 @router.post("/analyze")
-async def trigger_analyze(session: AsyncSession = Depends(get_session)):
-    """Manually trigger AI analysis on all unanalyzed stories."""
+async def trigger_analyze(
+    limit: int = Query(20, ge=1, le=100),
+    session: AsyncSession = Depends(get_session),
+):
+    """Analyze the next batch of unanalyzed stories. Caller polls until remaining=0."""
     llm_provider = await _get_setting(session, "llm_provider", "ollama")
     llm_model = await _get_setting(session, "llm_model", "llama3.2")
     llm_base_url = await _get_setting(session, "llm_base_url", "")
     llm_api_key = await _get_setting(session, "llm_api_key", "")
 
     result = await session.execute(
-        select(Story.id).where(Story.analyzed_at.is_(None)).limit(200)
+        select(Story.id).where(Story.analyzed_at.is_(None)).limit(limit)
     )
-    unanalyzed_ids = [row[0] for row in result.fetchall()]
+    batch_ids = [row[0] for row in result.fetchall()]
 
-    if not unanalyzed_ids:
-        return {"analyzed": 0, "message": "No unanalyzed stories found"}
+    if not batch_ids:
+        return {"analyzed": 0, "remaining": 0, "duration_ms": 0, "ok": True}
 
     provider = get_provider(
         provider_name=llm_provider, model=llm_model,
         base_url=llm_base_url, api_key=llm_api_key,
     )
+    t0 = time.monotonic()
     try:
-        await analyze_stories(session, unanalyzed_ids, provider)
+        await analyze_stories(session, batch_ids, provider)
         await session.commit()
     except Exception as e:
         logger.exception("manual /api/analyze failed")
-        return {"analyzed": 0, "error": f"{type(e).__name__}: {e}"}
+        remaining = (await session.execute(
+            select(func.count(Story.id)).where(Story.analyzed_at.is_(None))
+        )).scalar_one()
+        return {
+            "analyzed": 0, "remaining": int(remaining),
+            "duration_ms": int((time.monotonic() - t0) * 1000),
+            "ok": False, "error": f"{type(e).__name__}: {e}",
+        }
 
-    return {"analyzed": len(unanalyzed_ids), "message": f"Analyzed {len(unanalyzed_ids)} stories"}
+    remaining = (await session.execute(
+        select(func.count(Story.id)).where(Story.analyzed_at.is_(None))
+    )).scalar_one()
+    return {
+        "analyzed": len(batch_ids),
+        "remaining": int(remaining),
+        "duration_ms": int((time.monotonic() - t0) * 1000),
+        "ok": True,
+    }
