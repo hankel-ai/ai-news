@@ -156,10 +156,16 @@ export const api = {
   pingLLM: () =>
     request<{
       ok: boolean;
+      provider: string;
+      model: string;
+      base_url: string;
+      endpoint: string;
       duration_ms: number;
-      model?: string;
       reply?: string;
       error?: string;
+      error_type?: string;
+      http_status?: number;
+      available_models?: string[] | null;
     }>("/api/llm/ping", { method: "POST" }),
   analyzeStory: (storyId: number) =>
     request<{

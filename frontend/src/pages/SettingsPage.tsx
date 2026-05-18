@@ -95,6 +95,15 @@ function SourcesSection() {
     },
   });
 
+  const [showAddForm, setShowAddForm] = useState(false);
+  const createMutation = useMutation({
+    mutationFn: (body: Partial<SourceItem>) => api.createSource(body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["sources"] });
+      setShowAddForm(false);
+    },
+  });
+
   const healthMap = new Map<number, SourceHealthItem>();
   healthData?.items.forEach((h) => healthMap.set(h.source_id, h));
 
@@ -102,7 +111,25 @@ function SourcesSection() {
 
   return (
     <section className="mb-8">
-      <h2 className="text-lg font-semibold mb-3">Sources</h2>
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="text-lg font-semibold">Sources</h2>
+        <button
+          onClick={() => setShowAddForm((v) => !v)}
+          className="text-xs px-3 py-1 bg-hankel-accent text-hankel-bg rounded font-medium hover:brightness-110 transition"
+        >
+          {showAddForm ? "Cancel" : "+ Add Source"}
+        </button>
+      </div>
+
+      {showAddForm && (
+        <AddSourceForm
+          onSubmit={(body) => createMutation.mutate(body)}
+          onCancel={() => setShowAddForm(false)}
+          isPending={createMutation.isPending}
+          error={createMutation.error ? (createMutation.error as Error).message : null}
+        />
+      )}
+
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
@@ -336,6 +363,9 @@ function SettingsForm() {
   const testConnectionMutation = useMutation({
     mutationFn: () => api.pingLLM(),
   });
+  const hasDraftLLMChange = ["llm_provider", "llm_model", "llm_base_url", "llm_api_key"].some(
+    (k) => k in draft,
+  );
 
   if (isLoading || !settings) return <p className="text-hankel-muted">Loading settings...</p>;
 
@@ -346,18 +376,7 @@ function SettingsForm() {
   }
 
   function handleTestConnection() {
-    testConnectionMutation.mutate(undefined, {
-      onSuccess: (data) => {
-        if (data.ok) {
-          alert(`Connection OK in ${data.duration_ms}ms — ${data.model} replied: "${data.reply}"`);
-        } else {
-          alert(`Connection failed in ${data.duration_ms}ms — ${data.error}`);
-        }
-      },
-      onError: (err) => {
-        alert(`Connection failed: ${(err as Error).message}`);
-      },
-    });
+    testConnectionMutation.mutate();
   }
 
   return (
@@ -497,15 +516,22 @@ function SettingsForm() {
           />
         </Field>
         <Field label="">
-          <button
-            onClick={handleTestConnection}
-            disabled={testConnectionMutation.isPending}
-            className="px-4 py-2 bg-hankel-surface text-hankel-text rounded-lg text-sm font-medium border border-white/10 hover:border-hankel-accent hover:text-hankel-accent disabled:opacity-50 transition"
-          >
-            {testConnectionMutation.isPending ? "Testing..." : "Test Connection"}
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={handleTestConnection}
+              disabled={testConnectionMutation.isPending}
+              className="px-4 py-2 bg-hankel-surface text-hankel-text rounded-lg text-sm font-medium border border-white/10 hover:border-hankel-accent hover:text-hankel-accent disabled:opacity-50 transition"
+            >
+              {testConnectionMutation.isPending ? "Testing..." : "Test Connection"}
+            </button>
+            {hasDraftLLMChange && (
+              <span className="text-xs text-yellow-400">Save first — test uses saved values</span>
+            )}
+          </div>
         </Field>
       </div>
+
+      <LLMTestResult mutation={testConnectionMutation} />
 
       {/* Save */}
       <div className="mt-6 flex items-center gap-3">
@@ -519,6 +545,322 @@ function SettingsForm() {
         {saved && <span className="text-sm text-green-400">Saved!</span>}
       </div>
     </section>
+  );
+}
+
+const SOURCE_TYPE_OPTIONS: { value: string; label: string; needs: ("url" | "subreddit" | "sort" | "key_choice")[] }[] = [
+  { value: "rss", label: "RSS feed", needs: ["url"] },
+  { value: "reddit_json", label: "Reddit (subreddit)", needs: ["subreddit", "sort"] },
+  { value: "hackernews_api", label: "Hacker News (top)", needs: [] },
+  { value: "claude_blog", label: "Anthropic news", needs: [] },
+  { value: "html_scraper", label: "HTML scraper (techmeme/implicator)", needs: ["key_choice"] },
+];
+
+function slugify(s: string): string {
+  return s
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 40);
+}
+
+function AddSourceForm({
+  onSubmit,
+  onCancel,
+  isPending,
+  error,
+}: {
+  onSubmit: (body: Partial<SourceItem>) => void;
+  onCancel: () => void;
+  isPending: boolean;
+  error: string | null;
+}) {
+  const [name, setName] = useState("");
+  const [key, setKey] = useState("");
+  const [keyEdited, setKeyEdited] = useState(false);
+  const [type, setType] = useState("rss");
+  const [url, setUrl] = useState("");
+  const [subreddit, setSubreddit] = useState("");
+  const [sort, setSort] = useState("hot");
+  const [scraperKey, setScraperKey] = useState("techmeme");
+  const [maxStories, setMaxStories] = useState(10);
+  const [keywords, setKeywords] = useState("");
+  const [minScore, setMinScore] = useState("");
+
+  const typeMeta = SOURCE_TYPE_OPTIONS.find((t) => t.value === type)!;
+  const needsUrl = typeMeta.needs.includes("url");
+  const needsSubreddit = typeMeta.needs.includes("subreddit");
+  const needsScraperKey = typeMeta.needs.includes("key_choice");
+
+  function effectiveKey(): string {
+    if (needsScraperKey) return scraperKey;
+    if (keyEdited && key) return key;
+    if (name) return slugify(name);
+    return key;
+  }
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    const body: Partial<SourceItem> & {
+      key: string;
+      type: string;
+      name: string;
+    } = {
+      key: effectiveKey(),
+      name: name.trim(),
+      type,
+      enabled: true,
+      max_stories: maxStories,
+    };
+    if (needsUrl) body.url = url.trim();
+    if (needsSubreddit) {
+      body.subreddit = subreddit.trim().replace(/^\/?r\//, "");
+      body.sort = sort;
+    }
+    const kwList = keywords.split(",").map((s) => s.trim()).filter(Boolean);
+    if (kwList.length) body.keywords = kwList;
+    if (minScore.trim()) {
+      const n = Number(minScore);
+      if (Number.isFinite(n)) body.min_score = n;
+    }
+    onSubmit(body);
+  }
+
+  const submitDisabled =
+    isPending ||
+    !name.trim() ||
+    !effectiveKey() ||
+    (needsUrl && !url.trim()) ||
+    (needsSubreddit && !subreddit.trim());
+
+  return (
+    <form
+      onSubmit={handleSubmit}
+      className="mb-4 p-4 bg-hankel-surface/60 border border-white/10 rounded-lg"
+    >
+      <h3 className="text-sm font-medium mb-3">Add Source</h3>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+        <Field label="Name *">
+          <input
+            type="text"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="e.g. The Verge AI"
+            className="input-field"
+            autoFocus
+          />
+        </Field>
+        <Field label="Type *">
+          <select value={type} onChange={(e) => setType(e.target.value)} className="input-field">
+            {SOURCE_TYPE_OPTIONS.map((t) => (
+              <option key={t.value} value={t.value}>
+                {t.label}
+              </option>
+            ))}
+          </select>
+        </Field>
+        {needsScraperKey ? (
+          <Field label="Scraper *">
+            <select
+              value={scraperKey}
+              onChange={(e) => setScraperKey(e.target.value)}
+              className="input-field"
+            >
+              <option value="techmeme">techmeme</option>
+              <option value="implicator">implicator</option>
+            </select>
+          </Field>
+        ) : (
+          <Field label="Key (slug)">
+            <input
+              type="text"
+              value={keyEdited ? key : slugify(name)}
+              onChange={(e) => {
+                setKey(e.target.value);
+                setKeyEdited(true);
+              }}
+              placeholder="auto from name"
+              className="input-field"
+            />
+          </Field>
+        )}
+        {needsUrl && (
+          <Field label="URL *">
+            <input
+              type="text"
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              placeholder="https://example.com/feed.xml"
+              className="input-field"
+            />
+          </Field>
+        )}
+        {needsSubreddit && (
+          <>
+            <Field label="Subreddit *">
+              <input
+                type="text"
+                value={subreddit}
+                onChange={(e) => setSubreddit(e.target.value)}
+                placeholder="MachineLearning"
+                className="input-field"
+              />
+            </Field>
+            <Field label="Sort">
+              <select
+                value={sort}
+                onChange={(e) => setSort(e.target.value)}
+                className="input-field"
+              >
+                <option value="hot">hot</option>
+                <option value="new">new</option>
+                <option value="top">top</option>
+                <option value="rising">rising</option>
+              </select>
+            </Field>
+          </>
+        )}
+        <Field label="Max stories per fetch">
+          <input
+            type="number"
+            min={1}
+            max={100}
+            value={maxStories}
+            onChange={(e) => setMaxStories(Number(e.target.value) || 10)}
+            className="input-field"
+          />
+        </Field>
+        <Field label="Min score (optional)">
+          <input
+            type="number"
+            min={0}
+            value={minScore}
+            onChange={(e) => setMinScore(e.target.value)}
+            placeholder="HN: e.g. 50"
+            className="input-field"
+          />
+        </Field>
+        <Field label="Keywords (comma-separated, optional)">
+          <input
+            type="text"
+            value={keywords}
+            onChange={(e) => setKeywords(e.target.value)}
+            placeholder="ai, llm, agents"
+            className="input-field"
+          />
+        </Field>
+      </div>
+      {error && (
+        <div className="mt-3 text-xs text-red-300 bg-red-950/50 border border-red-900 rounded px-3 py-2">
+          {error}
+        </div>
+      )}
+      <div className="mt-4 flex items-center gap-3">
+        <button
+          type="submit"
+          disabled={submitDisabled}
+          className="px-4 py-1.5 bg-hankel-accent text-hankel-bg rounded text-sm font-medium hover:brightness-110 disabled:opacity-50 transition"
+        >
+          {isPending ? "Adding..." : "Add"}
+        </button>
+        <button
+          type="button"
+          onClick={onCancel}
+          className="px-4 py-1.5 text-hankel-muted hover:text-hankel-text text-sm"
+        >
+          Cancel
+        </button>
+      </div>
+    </form>
+  );
+}
+
+type LLMPingResult = Awaited<ReturnType<typeof api.pingLLM>>;
+
+function LLMTestResult({
+  mutation,
+}: {
+  mutation: { isPending: boolean; data?: LLMPingResult; error: unknown };
+}) {
+  if (mutation.isPending) {
+    return (
+      <div className="mt-3 text-xs text-hankel-muted bg-hankel-surface rounded px-3 py-2">
+        Testing connection...
+      </div>
+    );
+  }
+  if (mutation.error) {
+    return (
+      <div className="mt-3 text-xs text-red-300 bg-red-950/50 border border-red-900 rounded px-3 py-2">
+        Request failed: {(mutation.error as Error).message}
+      </div>
+    );
+  }
+  const data = mutation.data;
+  if (!data) return null;
+  return (
+    <div
+      className={`mt-3 text-xs rounded px-3 py-2 border ${
+        data.ok
+          ? "bg-green-950/40 border-green-900 text-green-200"
+          : "bg-red-950/40 border-red-900 text-red-200"
+      }`}
+    >
+      <div className="font-semibold mb-1">
+        {data.ok ? "Connection OK" : "Connection failed"} · {data.duration_ms}ms
+      </div>
+      <dl className="grid grid-cols-[max-content_1fr] gap-x-3 gap-y-0.5 font-mono">
+        <dt className="text-hankel-muted">provider</dt>
+        <dd>{data.provider}</dd>
+        <dt className="text-hankel-muted">model</dt>
+        <dd>{data.model}</dd>
+        <dt className="text-hankel-muted">base_url</dt>
+        <dd className="break-all">{data.base_url || "<empty>"}</dd>
+        <dt className="text-hankel-muted">endpoint</dt>
+        <dd className="break-all">{data.endpoint || "<empty>"}</dd>
+        {data.http_status !== undefined && (
+          <>
+            <dt className="text-hankel-muted">http_status</dt>
+            <dd>{data.http_status}</dd>
+          </>
+        )}
+        {data.error_type && (
+          <>
+            <dt className="text-hankel-muted">error_type</dt>
+            <dd>{data.error_type}</dd>
+          </>
+        )}
+        {data.error && (
+          <>
+            <dt className="text-hankel-muted">error</dt>
+            <dd className="break-words whitespace-pre-wrap">{data.error}</dd>
+          </>
+        )}
+        {data.reply && (
+          <>
+            <dt className="text-hankel-muted">reply</dt>
+            <dd className="break-words whitespace-pre-wrap">{data.reply}</dd>
+          </>
+        )}
+      </dl>
+      {data.available_models && data.available_models.length > 0 && (
+        <div className="mt-2 pt-2 border-t border-red-900/60">
+          <div className="text-hankel-muted mb-1">Available models on this Ollama:</div>
+          <div className="flex flex-wrap gap-1.5">
+            {data.available_models.map((m) => (
+              <code key={m} className="px-1.5 py-0.5 bg-hankel-surface rounded text-[11px]">
+                {m}
+              </code>
+            ))}
+          </div>
+        </div>
+      )}
+      {data.available_models && data.available_models.length === 0 && (
+        <div className="mt-2 pt-2 border-t border-red-900/60 text-hankel-muted">
+          Ollama reachable but reports zero installed models. Run <code>ollama pull &lt;model&gt;</code>.
+        </div>
+      )}
+    </div>
   );
 }
 
