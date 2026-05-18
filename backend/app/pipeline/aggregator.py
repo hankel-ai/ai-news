@@ -18,6 +18,7 @@ from app.pipeline.persist import prune_old, save_stories
 from app.sources.base import Story
 from app.sources.claude_blog import fetch_claude_blog
 from app.sources.hackernews import fetch_hackernews
+from app.sources.html_links import fetch_html_links
 from app.sources.implicator import fetch_implicator
 from app.sources.reddit import fetch_reddit
 from app.sources.rss_generic import fetch_rss
@@ -34,6 +35,7 @@ FETCHERS = {
     "rss": fetch_rss,
     "reddit_json": fetch_reddit,
     "claude_blog": fetch_claude_blog,
+    "html_links": fetch_html_links,
 }
 
 # For type=html_scraper, dispatch by source.key

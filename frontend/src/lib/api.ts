@@ -134,6 +134,22 @@ export const api = {
     request<{ id: number; viewed_at: string }>(`/api/stories/${storyId}/view`, {
       method: "PUT",
     }),
+  detectFeed: (url: string) =>
+    request<{
+      requested_url: string;
+      resolved_url?: string;
+      feeds: { url: string; title: string; type: string; source: string }[];
+      fallback: {
+        type: string;
+        url: string;
+        anchor_sample: { url: string; title: string }[];
+        hint: string;
+      } | null;
+      error: string | null;
+    }>("/api/sources/detect-feed", {
+      method: "POST",
+      body: JSON.stringify({ url }),
+    }),
   reconcileSource: (sourceId: number) =>
     request<ReconcileResult>(`/api/sources/${sourceId}/reconcile`, {
       method: "POST",

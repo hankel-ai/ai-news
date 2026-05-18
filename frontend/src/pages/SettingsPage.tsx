@@ -548,8 +548,9 @@ function SettingsForm() {
   );
 }
 
-const SOURCE_TYPE_OPTIONS: { value: string; label: string; needs: ("url" | "subreddit" | "sort" | "key_choice")[] }[] = [
+const SOURCE_TYPE_OPTIONS: { value: string; label: string; needs: ("url" | "subreddit" | "sort" | "key_choice" | "link_pattern")[] }[] = [
   { value: "rss", label: "RSS feed", needs: ["url"] },
+  { value: "html_links", label: "HTML page (track new links)", needs: ["url", "link_pattern"] },
   { value: "reddit_json", label: "Reddit (subreddit)", needs: ["subreddit", "sort"] },
   { value: "hackernews_api", label: "Hacker News (top)", needs: [] },
   { value: "claude_blog", label: "Anthropic news", needs: [] },
@@ -563,6 +564,8 @@ function slugify(s: string): string {
     .replace(/^_+|_+$/g, "")
     .slice(0, 40);
 }
+
+type DetectResult = Awaited<ReturnType<typeof api.detectFeed>>;
 
 function AddSourceForm({
   onSubmit,
@@ -580,6 +583,7 @@ function AddSourceForm({
   const [keyEdited, setKeyEdited] = useState(false);
   const [type, setType] = useState("rss");
   const [url, setUrl] = useState("");
+  const [linkPattern, setLinkPattern] = useState("");
   const [subreddit, setSubreddit] = useState("");
   const [sort, setSort] = useState("hot");
   const [scraperKey, setScraperKey] = useState("techmeme");
@@ -591,6 +595,21 @@ function AddSourceForm({
   const needsUrl = typeMeta.needs.includes("url");
   const needsSubreddit = typeMeta.needs.includes("subreddit");
   const needsScraperKey = typeMeta.needs.includes("key_choice");
+  const needsLinkPattern = typeMeta.needs.includes("link_pattern");
+
+  const detectMutation = useMutation({
+    mutationFn: (u: string) => api.detectFeed(u),
+    onSuccess: (data) => {
+      if (data.feeds.length > 0) {
+        setType("rss");
+        setUrl(data.feeds[0].url);
+      } else if (data.fallback) {
+        setType("html_links");
+        setUrl(data.fallback.url);
+      }
+    },
+  });
+  const detect: DetectResult | undefined = detectMutation.data;
 
   function effectiveKey(): string {
     if (needsScraperKey) return scraperKey;
@@ -616,6 +635,9 @@ function AddSourceForm({
     if (needsSubreddit) {
       body.subreddit = subreddit.trim().replace(/^\/?r\//, "");
       body.sort = sort;
+    }
+    if (needsLinkPattern && linkPattern.trim()) {
+      body.extra_config = { link_pattern: linkPattern.trim() };
     }
     const kwList = keywords.split(",").map((s) => s.trim()).filter(Boolean);
     if (kwList.length) body.keywords = kwList;
@@ -686,11 +708,33 @@ function AddSourceForm({
         )}
         {needsUrl && (
           <Field label="URL *">
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+                placeholder="https://example.com/feed.xml or any page"
+                className="input-field flex-1"
+              />
+              <button
+                type="button"
+                onClick={() => url.trim() && detectMutation.mutate(url.trim())}
+                disabled={!url.trim() || detectMutation.isPending}
+                className="px-3 py-1 bg-hankel-surface border border-white/10 hover:border-hankel-accent rounded text-xs whitespace-nowrap disabled:opacity-50"
+                title="Find an RSS/Atom feed or fall back to HTML link tracking"
+              >
+                {detectMutation.isPending ? "Detecting..." : "Detect"}
+              </button>
+            </div>
+          </Field>
+        )}
+        {needsLinkPattern && (
+          <Field label="Link pattern (regex, optional)">
             <input
               type="text"
-              value={url}
-              onChange={(e) => setUrl(e.target.value)}
-              placeholder="https://example.com/feed.xml"
+              value={linkPattern}
+              onChange={(e) => setLinkPattern(e.target.value)}
+              placeholder="e.g. /whats-new/  (leave blank to track all sub-pages)"
               className="input-field"
             />
           </Field>
@@ -750,6 +794,62 @@ function AddSourceForm({
           />
         </Field>
       </div>
+      {detectMutation.isError && (
+        <div className="mt-3 text-xs text-red-300 bg-red-950/50 border border-red-900 rounded px-3 py-2">
+          Detect failed: {(detectMutation.error as Error).message}
+        </div>
+      )}
+      {detect && !detectMutation.isError && (
+        <div className="mt-3 text-xs bg-hankel-surface/80 border border-white/10 rounded px-3 py-2">
+          {detect.error ? (
+            <span className="text-red-300">Could not fetch: {detect.error}</span>
+          ) : detect.feeds.length > 0 ? (
+            <div>
+              <div className="text-green-300 font-medium mb-1">
+                Found {detect.feeds.length} feed{detect.feeds.length > 1 ? "s" : ""} — switched to RSS.
+              </div>
+              {detect.feeds.map((f, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => {
+                    setType("rss");
+                    setUrl(f.url);
+                  }}
+                  className="block text-left hover:text-hankel-accent break-all"
+                >
+                  {f.title}: <span className="font-mono">{f.url}</span>
+                </button>
+              ))}
+            </div>
+          ) : detect.fallback ? (
+            <div>
+              <div className="text-yellow-300 font-medium mb-1">{detect.fallback.hint}</div>
+              {detect.fallback.anchor_sample.length > 0 ? (
+                <div>
+                  <div className="text-hankel-muted mb-1">
+                    Preview ({detect.fallback.anchor_sample.length} sample link
+                    {detect.fallback.anchor_sample.length > 1 ? "s" : ""}):
+                  </div>
+                  <ul className="space-y-0.5">
+                    {detect.fallback.anchor_sample.map((s, i) => (
+                      <li key={i} className="truncate text-hankel-muted">
+                        · <span className="text-hankel-text">{s.title}</span>{" "}
+                        <span className="font-mono text-[10px]">{s.url}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : (
+                <div className="text-hankel-muted">
+                  No suitable links found on this page. You may need a different URL or a
+                  link pattern.
+                </div>
+              )}
+            </div>
+          ) : null}
+        </div>
+      )}
       {error && (
         <div className="mt-3 text-xs text-red-300 bg-red-950/50 border border-red-900 rounded px-3 py-2">
           {error}

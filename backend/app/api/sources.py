@@ -1,6 +1,11 @@
+import asyncio
 import json
+import re
 from datetime import datetime, timezone
+from urllib.parse import urljoin, urlparse
 
+import httpx
+from bs4 import BeautifulSoup
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -143,6 +148,142 @@ async def delete_source(source_id: int, session: AsyncSession = Depends(get_sess
         raise HTTPException(404, "source not found")
     await session.delete(src)
     await session.commit()
+
+
+class DetectFeedRequest(BaseModel):
+    url: str
+
+
+_DETECT_UA = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
+)
+_FEED_PROBE_PATHS = ["/feed", "/feed/", "/rss", "/rss.xml", "/feed.xml", "/atom.xml", "/index.xml"]
+_FEED_CONTENT_HINTS = ("xml", "rss", "atom")
+
+
+async def _probe_feed(client: httpx.AsyncClient, candidate: str) -> dict | None:
+    """HEAD-or-GET-then-sniff a candidate feed URL. Returns descriptor or None."""
+    try:
+        resp = await client.get(candidate, follow_redirects=True, timeout=8)
+    except httpx.HTTPError:
+        return None
+    if resp.status_code >= 400:
+        return None
+    ctype = resp.headers.get("content-type", "").lower()
+    body_head = resp.text[:512].lower()
+    looks_feedy = (
+        any(h in ctype for h in _FEED_CONTENT_HINTS)
+        or "<rss" in body_head
+        or "<feed" in body_head
+    )
+    if not looks_feedy:
+        return None
+    return {"url": str(resp.url), "content_type": ctype or "unknown"}
+
+
+@router.post("/sources/detect-feed")
+async def detect_feed(body: DetectFeedRequest):
+    """Probe a URL for an RSS/Atom feed; if none found, suggest an html_links config."""
+    url = body.url.strip()
+    if not url.startswith(("http://", "https://")):
+        url = "https://" + url
+
+    result: dict = {
+        "requested_url": url,
+        "feeds": [],
+        "fallback": None,
+        "error": None,
+    }
+
+    async with httpx.AsyncClient(headers={"User-Agent": _DETECT_UA}, timeout=10) as client:
+        try:
+            resp = await client.get(url, follow_redirects=True)
+            resp.raise_for_status()
+        except httpx.HTTPError as e:
+            result["error"] = f"{type(e).__name__}: {e}"
+            return result
+
+        final_url = str(resp.url)
+        result["resolved_url"] = final_url
+
+        soup = BeautifulSoup(resp.text, "html.parser")
+
+        # 1. <link rel="alternate" type="application/rss+xml|atom+xml">
+        for link in soup.find_all("link", rel=lambda v: v and "alternate" in v):
+            ltype = (link.get("type") or "").lower()
+            href = link.get("href", "").strip()
+            if not href:
+                continue
+            if "rss" in ltype or "atom" in ltype:
+                result["feeds"].append({
+                    "url": urljoin(final_url, href),
+                    "title": link.get("title", "") or "Feed",
+                    "type": ltype,
+                    "source": "link-alternate",
+                })
+
+        # 2. Probe common feed paths under the site root, in parallel
+        if not result["feeds"]:
+            parsed = urlparse(final_url)
+            root = f"{parsed.scheme}://{parsed.netloc}"
+            probes = [_probe_feed(client, root + p) for p in _FEED_PROBE_PATHS]
+            for hit in await asyncio.gather(*probes):
+                if hit:
+                    result["feeds"].append({
+                        "url": hit["url"],
+                        "title": "Feed (probed)",
+                        "type": hit["content_type"],
+                        "source": "path-probe",
+                    })
+                    break  # one is enough
+
+        # 3. Always offer html_links fallback so the user can grab updates without a feed
+        anchor_sample = _sample_links(soup, final_url)
+        result["fallback"] = {
+            "type": "html_links",
+            "url": final_url,
+            "anchor_sample": anchor_sample,
+            "hint": (
+                "No feed detected. The html_links fetcher will track new links under "
+                f"{urlparse(final_url).path or '/'} on this page."
+                if not result["feeds"]
+                else "Feed detected above. html_links is an alternative if the feed is incomplete."
+            ),
+        }
+
+    return result
+
+
+def _sample_links(soup: BeautifulSoup, base_url: str, n: int = 5) -> list[dict]:
+    """Show the user a preview of links the html_links scraper would emit."""
+    parsed = urlparse(base_url)
+    src_host = parsed.netloc
+    src_base_path = parsed.path.rstrip("/") + "/"
+    seen: set[str] = set()
+    out: list[dict] = []
+    for a in soup.find_all("a", href=True):
+        href = a.get("href", "").strip()
+        if not href or href.startswith(("#", "javascript:", "mailto:", "tel:")):
+            continue
+        abs_url = urljoin(base_url, href)
+        p = urlparse(abs_url)
+        if p.scheme not in ("http", "https") or p.netloc != src_host:
+            continue
+        if src_base_path != "/" and not p.path.startswith(src_base_path):
+            continue
+        clean = p._replace(fragment="").geturl()
+        if clean in seen or clean.rstrip("/") == base_url.rstrip("/"):
+            continue
+        title = a.get_text(strip=True) or a.get("title", "") or a.get("aria-label", "")
+        title = re.sub(r"\s+", " ", title).strip()
+        if not title or len(title) < 3:
+            continue
+        seen.add(clean)
+        out.append({"url": clean, "title": title[:120]})
+        if len(out) >= n:
+            break
+    return out
 
 
 @router.post("/sources/{source_id}/reconcile")
