@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import Story
 from app.llm.base import LLMProvider
+from app.utils.content_scraper import enrich_stories
 
 logger = logging.getLogger(__name__)
 
@@ -64,10 +65,22 @@ async def _analyze_batch(
     batch: list[Story],
     provider: LLMProvider,
 ) -> None:
+    # Stories with no content (e.g. html_links source, or older stories from a feed
+    # without summaries) give the LLM nothing to work with — it returns
+    # "No content provided" or drops them entirely. Backfill via trafilatura.
+    needs_content = [s for s in batch if not (s.article_content or s.summary)]
+    if needs_content:
+        await enrich_stories(needs_content)
+
     stories_input = []
     for s in batch:
         content = s.article_content or s.summary or ""
-        stories_input.append({"id": s.id, "title": s.title, "content": content[:2000]})
+        stories_input.append({
+            "id": s.id,
+            "title": s.title,
+            "url": s.url,
+            "content": content[:2000],
+        })
 
     prompt = f"Analyze these stories:\n\n{json.dumps(stories_input, indent=2)}"
     raw = await provider.complete(prompt, system=SYSTEM_PROMPT)
@@ -80,14 +93,30 @@ async def _analyze_batch(
 
     now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     story_map = {s.id: s for s in batch}
+    responded_ids: set[int] = set()
 
     for item in data.get("stories", []):
         story = story_map.get(item.get("id"))
         if not story:
             continue
+        responded_ids.add(story.id)
         story.ai_summary = item.get("summary", "")
         story.relevance_score = max(0, min(100, int(item.get("score", 0))))
         topics = item.get("topics", [])
         valid_topics = [t for t in topics if t in TOPIC_VOCABULARY]
         story.topics = json.dumps(valid_topics)
         story.analyzed_at = now_iso
+
+    # Stories the LLM silently dropped (no entry in response) should still be
+    # marked analyzed so they don't get retried on every fetch run forever.
+    for story in batch:
+        if story.id in responded_ids:
+            continue
+        story.ai_summary = story.ai_summary or ""
+        story.relevance_score = 0
+        story.topics = json.dumps([])
+        story.analyzed_at = now_iso
+        logger.warning(
+            "LLM dropped story id=%d url=%s — marking analyzed with score=0",
+            story.id, story.url,
+        )

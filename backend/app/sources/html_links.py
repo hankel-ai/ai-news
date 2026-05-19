@@ -13,6 +13,8 @@ from urllib.parse import urljoin, urlparse
 import httpx
 from bs4 import BeautifulSoup
 
+from app.utils.content_scraper import enrich_stories
+
 from .base import Story
 
 logger = logging.getLogger(__name__)
@@ -88,5 +90,10 @@ async def fetch_html_links(config: dict) -> list[Story]:
 
         if len(stories) >= max_stories:
             break
+
+    # Titles alone are usually too thin for AI analysis ("Week 19 · May 4–8" tells
+    # the LLM nothing). Always pull each linked page's body so analyzer has signal.
+    if stories:
+        await enrich_stories(stories)
 
     return stories
