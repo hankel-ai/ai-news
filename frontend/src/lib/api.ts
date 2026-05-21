@@ -26,6 +26,10 @@ export interface StoryItem {
   keywords_matched: string | null;
   image_url: string | null;
   viewed_at: string | null;
+  ai_summary: string | null;
+  relevance_score: number | null;
+  topics: string[];
+  analyzed_at: string | null;
 }
 
 export interface StoriesResponse {
@@ -130,8 +134,64 @@ export const api = {
     request<{ id: number; viewed_at: string }>(`/api/stories/${storyId}/view`, {
       method: "PUT",
     }),
+  detectFeed: (url: string) =>
+    request<{
+      requested_url: string;
+      resolved_url?: string;
+      feeds: { url: string; title: string; type: string; source: string }[];
+      fallback: {
+        type: string;
+        url: string;
+        anchor_sample: { url: string; title: string }[];
+        hint: string;
+      } | null;
+      error: string | null;
+    }>("/api/sources/detect-feed", {
+      method: "POST",
+      body: JSON.stringify({ url }),
+    }),
   reconcileSource: (sourceId: number) =>
     request<ReconcileResult>(`/api/sources/${sourceId}/reconcile`, {
       method: "POST",
     }),
+  importMissingFromSource: (sourceId: number) =>
+    request<{
+      source_id: number;
+      source_name: string;
+      available_count: number;
+      imported: number;
+    }>(`/api/sources/${sourceId}/reconcile/import`, { method: "POST" }),
+  triggerAnalyze: (limit = 20) =>
+    request<{
+      analyzed: number;
+      remaining: number;
+      duration_ms: number;
+      ok: boolean;
+      error?: string;
+    }>(`/api/analyze?limit=${limit}`, { method: "POST" }),
+  pingLLM: () =>
+    request<{
+      ok: boolean;
+      provider: string;
+      model: string;
+      base_url: string;
+      endpoint: string;
+      duration_ms: number;
+      reply?: string;
+      error?: string;
+      error_type?: string;
+      http_status?: number;
+      available_models?: string[] | null;
+    }>("/api/llm/ping", { method: "POST" }),
+  analyzeStory: (storyId: number) =>
+    request<{
+      id: number;
+      ok: boolean;
+      duration_ms: number;
+      error?: string;
+      ai_summary?: string | null;
+      relevance_score?: number | null;
+      topics?: string[];
+      analyzed_at?: string | null;
+    }>(`/api/stories/${storyId}/analyze`, { method: "POST" }),
 };

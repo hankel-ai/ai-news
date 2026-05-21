@@ -28,10 +28,10 @@ backend/app/
   config.py            env-only: DB_PATH, DATA_DIR, SEED_PATH, EMBED_ALLOWED_ORIGINS
   security.py          CSP frame-ancestors middleware
   scheduler.py         init_scheduler, reschedule_from_db, run_fetch_job
-  db/                  engine, models, migrations, migrations_sql/{001_init,002_add_image_url,003_add_viewed_at}.sql
-  api/                 stories, sources, settings, fetch, health, embed
+  db/                  engine, models, migrations, migrations_sql/{001_init,002_add_image_url,003_add_viewed_at,004_add_intelligence}.sql
+  api/                 stories, sources, settings, fetch, health, embed, alerts
   pipeline/            aggregator (DB-driven run_once), persist, health_writer
-  sources/             copied from ai-podcast (hackernews, rss_generic, reddit, techmeme, implicator, claude_blog, base)
+  sources/             copied from ai-podcast (hackernews, rss_generic, reddit, techmeme, implicator, claude_blog, base) + html_links (generic anchor scraper for sites without a feed; filters to same-host + same-base-path, optional link_pattern regex via extra_config; always calls enrich_stories so analyzer has content beyond just titles)
   utils/               dedup, content_scraper, image_extractor, logging_setup
   static/              built frontend assets (vite build output)
 frontend/src/
@@ -83,7 +83,10 @@ After that, every `git push` to main builds + deploys on its own. Don't delete t
 - **Content scraper thread pool**: `utils/content_scraper.py` was rewritten from ai-podcast to use `asyncio.to_thread` instead of a module-level `ThreadPoolExecutor` (which leaks in long-lived servers).
 - **Hover preview disabled on mobile**: `StoryCard.tsx` uses `matchMedia("(hover: hover)")` to detect touch devices and skip hover popup entirely. Desktop users can toggle it off via the `hover_preview_enabled` setting.
 - **Viewed/read tracking**: `stories.viewed_at` column tracks when an article was read. `PUT /api/stories/{id}/view` marks it. Cards fade to 60% opacity when viewed.
+- **AI analysis pipeline**: `pipeline/analyzer.py` sends unanalyzed stories to an LLM (Ollama/Anthropic/LiteLLM) for scoring, summarization, and topic tagging. Before each batch, the analyzer auto-enriches any story with empty `article_content`+`summary` via trafilatura (otherwise the LLM gets only a title and either says "No content provided" or silently drops the story). Stories the LLM silently drops are still marked `analyzed_at` (with score=0, empty summary) so they don't get retried on every fetch run forever. Integrated into the fetch pipeline (`aggregator.py`); auto-runs when `analysis_enabled=true`. Manual triggers: `POST /api/analyze` (backfill all unanalyzed, capped at 200), `POST /api/stories/{id}/analyze` (single story, returns timing). Settings control `analysis_enabled`, `llm_provider`, `llm_model`, `llm_base_url`, `llm_api_key`. Helm chart exposes `llm.*` values (`provider`, `model`, `baseUrl`, `apiKeySecretName`, `apiKeySecretKey`) which map to `AI_NEWS_LLM_*` env vars; API key uses `secretKeyRef` when `apiKeySecretName` is non-empty. Trend detection / alerts feature was removed (see migration `005_drop_trends.sql`) — too noisy to be useful.
+- **Stories API sort/filter**: `GET /api/stories` supports `sort_by` (relevance|newest|source), `min_score`, `topics` (comma-separated), `unread_only`. Response items include `ai_summary`, `relevance_score`, `topics` (parsed list), `analyzed_at`.
 - **Per-source reconciliation**: `POST /api/sources/{id}/reconcile` fetches all available articles from a source (bypassing keyword/score filters via `skip_keyword_filter` config flag) and compares against DB. Accessible from Settings > Sources > Reconcile button.
+- **Feed auto-detect + html_links fallback**: `POST /api/sources/detect-feed` probes `<link rel="alternate">` and common feed paths (`/feed`, `/rss`, `/feed.xml`, `/atom.xml`, `/index.xml`); always returns a `fallback` with a 5-link preview using the same heuristic as `html_links` (same host + same base path). Surfaced via the Detect button in the Add Source form. For sites with no feed (e.g. `code.claude.com/docs/en/whats-new`), pick type `html_links` — it tracks new anchors under the same path on each fetch. `link_pattern` (regex) lives in `extra_config` for further filtering.
 - **Image extraction pipeline**: `image_extractor.py` checks og:image → twitter:image → ld+json → article/figure tags → generic img tags → Google favicon fallback. Reddit fetcher unescapes HTML entities in preview URLs and extracts images from self-post HTML. Techmeme fetcher extracts inline cluster images.
 
 ## Related Projects

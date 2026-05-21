@@ -1,5 +1,7 @@
+import json
 import logging
 import re
+import time
 from datetime import datetime, timezone
 from urllib.parse import urlparse
 
@@ -10,7 +12,9 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.engine import get_session
-from app.db.models import Story
+from app.db.models import Setting, Story
+from app.llm import get_provider
+from app.pipeline.analyzer import analyze_stories
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["stories"])
@@ -24,6 +28,10 @@ async def list_stories(
     since: str | None = None,
     until: str | None = None,
     q: str | None = None,
+    sort_by: str = "newest",
+    min_score: int | None = None,
+    topics: str | None = None,
+    unread_only: bool = False,
     session: AsyncSession = Depends(get_session),
 ):
     stmt = select(Story)
@@ -42,10 +50,30 @@ async def list_stories(
         pattern = f"%{q}%"
         stmt = stmt.where(Story.title.ilike(pattern) | Story.summary.ilike(pattern))
         count_stmt = count_stmt.where(Story.title.ilike(pattern) | Story.summary.ilike(pattern))
+    if min_score is not None:
+        stmt = stmt.where(Story.relevance_score >= min_score)
+        count_stmt = count_stmt.where(Story.relevance_score >= min_score)
+    if topics:
+        topic_list = [t.strip() for t in topics.split(",")]
+        for topic in topic_list:
+            stmt = stmt.where(Story.topics.like(f'%"{topic}"%'))
+            count_stmt = count_stmt.where(Story.topics.like(f'%"{topic}"%'))
+    if unread_only:
+        stmt = stmt.where(Story.viewed_at.is_(None))
+        count_stmt = count_stmt.where(Story.viewed_at.is_(None))
 
     total = (await session.execute(count_stmt)).scalar_one()
 
-    stmt = stmt.order_by(Story.first_seen_at.desc()).offset(offset).limit(limit)
+    if sort_by == "relevance":
+        stmt = stmt.order_by(Story.relevance_score.desc().nulls_last(), Story.first_seen_at.desc())
+    elif sort_by == "newest":
+        stmt = stmt.order_by(Story.first_seen_at.desc())
+    elif sort_by == "source":
+        stmt = stmt.order_by(Story.source_name, Story.relevance_score.desc().nulls_last())
+    else:
+        stmt = stmt.order_by(Story.first_seen_at.desc())
+
+    stmt = stmt.offset(offset).limit(limit)
 
     rows = (await session.execute(stmt)).scalars().all()
 
@@ -67,6 +95,10 @@ async def list_stories(
                 "keywords_matched": r.keywords_matched,
                 "image_url": r.image_url,
                 "viewed_at": r.viewed_at,
+                "ai_summary": r.ai_summary,
+                "relevance_score": r.relevance_score,
+                "topics": json.loads(r.topics) if r.topics else [],
+                "analyzed_at": r.analyzed_at,
             }
             for r in rows
         ],
@@ -82,6 +114,50 @@ async def mark_viewed(story_id: int, session: AsyncSession = Depends(get_session
         story.viewed_at = datetime.now(timezone.utc).isoformat()
         await session.commit()
     return {"id": story.id, "viewed_at": story.viewed_at}
+
+
+async def _setting(session: AsyncSession, key: str, default: str) -> str:
+    row = (await session.execute(select(Setting.value).where(Setting.key == key))).scalar_one_or_none()
+    return row if row is not None else default
+
+
+@router.post("/stories/{story_id}/analyze")
+async def analyze_story(story_id: int, session: AsyncSession = Depends(get_session)):
+    story = await session.get(Story, story_id)
+    if not story:
+        raise HTTPException(404, "story not found")
+
+    llm_provider = await _setting(session, "llm_provider", "ollama")
+    llm_model = await _setting(session, "llm_model", "llama3.2")
+    llm_base_url = await _setting(session, "llm_base_url", "")
+    llm_api_key = await _setting(session, "llm_api_key", "")
+
+    provider = get_provider(
+        provider_name=llm_provider, model=llm_model,
+        base_url=llm_base_url, api_key=llm_api_key,
+    )
+    t0 = time.monotonic()
+    try:
+        await analyze_stories(session, [story_id], provider)
+        await session.commit()
+    except Exception as e:
+        logger.exception("per-story analyze failed for id=%d", story_id)
+        return {
+            "id": story_id, "ok": False,
+            "error": f"{type(e).__name__}: {e}",
+            "duration_ms": int((time.monotonic() - t0) * 1000),
+        }
+
+    await session.refresh(story)
+    return {
+        "id": story_id,
+        "ok": True,
+        "duration_ms": int((time.monotonic() - t0) * 1000),
+        "ai_summary": story.ai_summary,
+        "relevance_score": story.relevance_score,
+        "topics": json.loads(story.topics) if story.topics else [],
+        "analyzed_at": story.analyzed_at,
+    }
 
 
 _STRIP_HEADERS = {

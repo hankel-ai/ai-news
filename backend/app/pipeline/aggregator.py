@@ -10,12 +10,15 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import FetchRun, Source
+from app.db.models import FetchRun, Source, Story as StoryModel
+from app.llm import get_provider
+from app.pipeline.analyzer import analyze_stories
 from app.pipeline.health_writer import record_health
 from app.pipeline.persist import prune_old, save_stories
 from app.sources.base import Story
 from app.sources.claude_blog import fetch_claude_blog
 from app.sources.hackernews import fetch_hackernews
+from app.sources.html_links import fetch_html_links
 from app.sources.implicator import fetch_implicator
 from app.sources.reddit import fetch_reddit
 from app.sources.rss_generic import fetch_rss
@@ -32,6 +35,7 @@ FETCHERS = {
     "rss": fetch_rss,
     "reddit_json": fetch_reddit,
     "claude_blog": fetch_claude_blog,
+    "html_links": fetch_html_links,
 }
 
 # For type=html_scraper, dispatch by source.key
@@ -91,6 +95,11 @@ async def run_once(
     dry_run: bool = False,
     enrich_content: bool = False,
     retention_days: int | None = None,
+    analysis_enabled: bool = False,
+    llm_provider: str = "ollama",
+    llm_model: str = "llama3.2",
+    llm_base_url: str = "",
+    llm_api_key: str = "",
 ) -> FetchRun:
     """Execute one fetch cycle.
 
@@ -157,6 +166,25 @@ async def run_once(
     stories_new = 0
     if not dry_run and deduped_pairs:
         stories_new = await save_stories(session, deduped_pairs)
+
+    if analysis_enabled and stories_new > 0:
+        try:
+            provider = get_provider(
+                provider_name=llm_provider, model=llm_model,
+                base_url=llm_base_url, api_key=llm_api_key,
+            )
+            unanalyzed = await session.execute(
+                select(StoryModel.id).where(
+                    StoryModel.analyzed_at.is_(None),
+                    StoryModel.first_seen_at >= run.started_at,
+                )
+            )
+            new_ids = [row[0] for row in unanalyzed.fetchall()]
+            if new_ids:
+                await analyze_stories(session, new_ids, provider)
+                await session.commit()
+        except Exception:
+            logger.exception("AI analysis failed — stories saved without analysis")
 
     if retention_days is not None and not dry_run:
         await prune_old(session, retention_days)
