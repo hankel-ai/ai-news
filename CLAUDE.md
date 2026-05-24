@@ -92,6 +92,6 @@ After that, every `git push` to main builds + deploys on its own. Don't delete t
 ## Related Projects
 - `../ai-podcast` — original source; kept unchanged as the podcast version
 - `../pihole-helm` — Helm chart conventions used here (`_helpers.tpl`, `Recreate` strategy, lean values, Traefik ingress + cert-manager)
-- `../container-image-compare` — CI/CD pattern used here (`ubuntu-latest` → `arc-runner-set`, `docker/build-push-action@v7`)
+- `../comptainer` — CI/CD pattern used here (`ubuntu-latest` → `arc-runner-set`, `docker/build-push-action@v7`)
 - `../hankel-ai.github.io` — portfolio that embeds `/embed` via a Hugo shortcode
 - `../cert-issuer-hankel` — defines the `letsencrypt-hankel` ClusterIssuer
