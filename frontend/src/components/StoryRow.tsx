@@ -64,17 +64,17 @@ export default function StoryRow({ story, expanded, onToggle }: StoryRowProps) {
 
   return (
     <div className={`border-b border-white/5 ${story.viewed_at ? "opacity-50" : ""}`}>
-      <div className="flex items-center gap-2.5 px-4 py-3">
+      <div className="flex items-start gap-2.5 px-4 py-3">
         <button
           onClick={handleClick}
-          className="flex-1 text-left text-sm font-medium text-hankel-text hover:text-hankel-accent truncate"
+          className="flex-1 min-w-0 text-left text-sm font-medium text-hankel-text hover:text-hankel-accent break-words"
         >
           {story.title}
         </button>
-        <span className="shrink-0 text-xs text-hankel-muted hidden sm:inline">
+        <span className="shrink-0 text-xs text-hankel-muted hidden sm:inline mt-0.5">
           {sourceHostname(story.url)}
         </span>
-        <span className="shrink-0 text-xs text-hankel-muted">
+        <span className="shrink-0 text-xs text-hankel-muted mt-0.5">
           {timeAgo(story.first_seen_at)}
         </span>
         <button
