@@ -74,7 +74,6 @@ async def list_fetch_runs(
                 "sources_ok": r.sources_ok,
                 "sources_failed": r.sources_failed,
                 "duration_ms": r.duration_ms,
-                "error": r.error,
             }
             for r in rows
         ]

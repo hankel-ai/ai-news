@@ -79,7 +79,6 @@ export interface FetchRunItem {
   sources_ok: number;
   sources_failed: number;
   duration_ms: number | null;
-  error: string | null;
 }
 
 export interface HealthStatus {

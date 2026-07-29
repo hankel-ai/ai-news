@@ -57,7 +57,6 @@ class Story(Base):
     score: Mapped[int | None] = mapped_column(Integer, nullable=True)
     published_at: Mapped[str | None] = mapped_column(String, nullable=True)
     keywords_matched: Mapped[str | None] = mapped_column(String, nullable=True)  # JSON array
-    image_url: Mapped[str | None] = mapped_column(String, nullable=True)
     first_seen_at: Mapped[str] = mapped_column(String, nullable=False, default=_now)
     viewed_at: Mapped[str | None] = mapped_column(String, nullable=True)
     ai_summary: Mapped[str | None] = mapped_column(Text, default=None)
@@ -105,7 +104,6 @@ class FetchRun(Base):
     sources_ok: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     sources_failed: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    error: Mapped[str | None] = mapped_column(String, nullable=True)
 
 
 class SourceHealth(Base):
