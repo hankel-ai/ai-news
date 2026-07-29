@@ -1,7 +1,15 @@
 """Publication dates for sources that carry no feed date."""
 from datetime import datetime, timedelta, timezone
 
-from app.utils.article_date import date_from_html, date_from_url, published_for
+import pytest
+
+from app.sources.base import Story
+from app.utils.article_date import (
+    apply_url_dates,
+    date_from_html,
+    date_from_url,
+    published_for,
+)
 
 
 def test_iso_week_slug():
@@ -71,6 +79,47 @@ def test_falls_back_to_html_when_url_has_no_date():
 
 def test_returns_none_when_nothing_found():
     assert published_for("https://example.com/some-slug", "<html><body>hi</body></html>") is None
+
+
+def _week(n: int) -> Story:
+    return Story(title=f"Week {n}",
+                 url=f"https://code.claude.com/docs/en/whats-new/2026-w{n}",
+                 source_name="Claude Code Updates")
+
+
+def test_apply_url_dates_needs_no_network():
+    stories = [_week(24)]
+    assert apply_url_dates(stories) == 1
+    assert stories[0].published.date().isoformat() == "2026-06-08"
+
+
+def test_apply_url_dates_preserves_an_existing_date():
+    s = _week(24)
+    s.published = datetime(2020, 1, 1, tzinfo=timezone.utc)
+    assert apply_url_dates([s]) == 0
+    assert s.published.year == 2020
+
+
+def test_apply_url_dates_ignores_urls_without_one():
+    s = Story(title="x", url="https://implicator.ai/some-slug/", source_name="i")
+    assert apply_url_dates([s]) == 0
+    assert s.published is None
+
+
+@pytest.mark.asyncio
+async def test_date_survives_a_failed_page_fetch():
+    """Week 24 shipped dateless because its one GET failed. It must not recur."""
+    from app.utils.content_scraper import enrich_stories
+
+    # Port 9 (discard) on loopback refuses immediately.
+    unreachable = Story(title="Week 24",
+                        url="http://127.0.0.1:9/docs/en/whats-new/2026-w24",
+                        source_name="Claude Code Updates")
+    await enrich_stories([unreachable])
+
+    assert not unreachable.article_content  # the fetch really did fail
+    assert unreachable.published is not None
+    assert unreachable.published.date().isoformat() == "2026-06-08"
 
 
 def test_result_is_timezone_aware():

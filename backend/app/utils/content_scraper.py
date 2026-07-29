@@ -11,7 +11,7 @@ import httpx
 import trafilatura
 
 from app.sources.base import Story
-from app.utils.article_date import published_for
+from app.utils.article_date import apply_url_dates, published_for
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +45,9 @@ async def fetch_article_content(story: Story, client: httpx.AsyncClient) -> None
 async def enrich_stories(stories: list[Story]) -> None:
     if not stories:
         return
+    # Before any network call — a story whose page fails to load must still get
+    # the date its URL already encodes.
+    apply_url_dates(stories)
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
     }

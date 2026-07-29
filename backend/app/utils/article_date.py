@@ -87,3 +87,22 @@ def date_from_html(html: str) -> datetime | None:
 
 def published_for(url: str, html: str) -> datetime | None:
     return date_from_url(url) or date_from_html(html)
+
+
+def apply_url_dates(stories) -> int:
+    """Fill `published` from the URL for any story missing one. Returns the count.
+
+    Deliberately network-free and called before any page fetch: a URL-encoded
+    date is knowable without the page, and a timed-out or 429'd fetch must not
+    cost the story its date. (Week 24 shipped with published_at NULL because the
+    date was only assigned after a successful GET, and that one GET failed — it
+    then dated by ingestion time and sat at the top of the feed.)
+    """
+    filled = 0
+    for story in stories:
+        if story.published is None:
+            dt = date_from_url(story.url)
+            if dt is not None:
+                story.published = dt
+                filled += 1
+    return filled
