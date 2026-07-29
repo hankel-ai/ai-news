@@ -35,6 +35,11 @@ resources:
     cpu: 500m
     memory: 512Mi
 
+# Caps glibc malloc arenas. Without it the lxml parsing in each fetch run
+# ratchets RSS up ~90MB per run and the pod is OOMKilled every ~5h.
+# See the deployment template and CLAUDE.md "Memory / OOM restarts".
+mallocArenaMax: 2
+
 llm:
   provider: ollama
   model: llama3.2

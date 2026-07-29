@@ -433,12 +433,6 @@ function SettingsForm() {
             onChange={(v) => handleChange("display_group_by_date", v)}
           />
         </Field>
-        <Field label="Hover preview (desktop)">
-          <Toggle
-            checked={!!merged.hover_preview_enabled}
-            onChange={(v) => handleChange("hover_preview_enabled", v)}
-          />
-        </Field>
         <Field label="Expand summaries by default">
           <Toggle
             checked={!!(merged as Record<string, unknown>).display_expand_summaries}

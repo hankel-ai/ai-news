@@ -17,6 +17,27 @@ def normalize_url(url: str) -> str:
     return urlunparse(("", netloc, path, "", query, ""))
 
 
+_DIGITS = re.compile(r"\d+")
+
+
+def _digits(title: str) -> tuple[str, ...]:
+    return tuple(_DIGITS.findall(title))
+
+
+def _is_similar(a: str, b: str) -> bool:
+    """Fuzzy title match, guarded by the numbers in each title.
+
+    Serial titles differ only in their numbers, so raw similarity treats them
+    as duplicates of each other — "Week 25 · June 15-19" and "Week 23 · June
+    1-5" score 0.84, which silently discarded half of every weekly-digest
+    batch. Genuine cross-source dupes of the same story quote the same figures,
+    so requiring the numbers to agree keeps those collapsing.
+    """
+    if _digits(a) != _digits(b):
+        return False
+    return difflib.SequenceMatcher(None, a.lower(), b.lower()).ratio() >= 0.75
+
+
 def deduplicate(stories: list[Story]) -> list[Story]:
     seen_urls: dict[str, Story] = {}
     result: list[Story] = []
@@ -34,10 +55,7 @@ def deduplicate(stories: list[Story]) -> list[Story]:
 
         is_dup = False
         for existing in result:
-            ratio = difflib.SequenceMatcher(
-                None, story.title.lower(), existing.title.lower()
-            ).ratio()
-            if ratio >= 0.75:
+            if _is_similar(story.title, existing.title):
                 if (story.score or 0) > (existing.score or 0):
                     result.remove(existing)
                     del seen_urls[normalize_url(existing.url)]

@@ -21,6 +21,7 @@ from app.config import get_settings
 from app.db.engine import SessionLocal, engine
 from app.db.migrations import run as run_migrations
 from app.db.models import Setting, Source
+from app.pipeline.persist import backfill_url_dates
 from app.scheduler import init_scheduler, shutdown_scheduler, start_scheduler
 from app.security import CSPMiddleware
 from app.utils.logging_setup import setup_logging
@@ -100,6 +101,9 @@ async def lifespan(app: FastAPI):
     await run_migrations()
     await _seed_sources(cfg.seed_path)
     await _seed_default_settings()
+
+    async with SessionLocal() as session:
+        await backfill_url_dates(session)
 
     async with SessionLocal() as session:
         row = (

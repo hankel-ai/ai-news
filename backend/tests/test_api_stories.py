@@ -97,6 +97,80 @@ async def test_sort_by_newest(db_session):
     assert dates == sorted(dates, reverse=True)
 
 
+async def _seed_backfilled_story(session: AsyncSession, source: Source) -> Story:
+    """A May article that only reached the DB today — the resurrection case."""
+    s = Story(
+        source_id=source.id, title="Week 22 - May 25-29",
+        url="http://test.com/w22", url_normalized="test.com/w22",
+        source_name=source.name,
+        published_at="2026-05-25T00:00:00Z",
+        first_seen_at="2026-07-29T02:54:00Z",
+    )
+    session.add(s)
+    await session.flush()
+    return s
+
+
+@pytest.mark.asyncio
+async def test_newest_sorts_by_publication_not_ingestion(db_session):
+    source = await _seed_source(db_session)
+    await _seed_backfilled_story(db_session, source)
+    recent = Story(
+        source_id=source.id, title="Today's news",
+        url="http://test.com/today", url_normalized="test.com/today",
+        source_name=source.name,
+        published_at="2026-07-28T12:00:00Z",
+        first_seen_at="2026-07-28T12:05:00Z",
+    )
+    db_session.add(recent)
+    await db_session.flush()
+
+    from app.api.stories import list_stories
+
+    result = await list_stories(
+        limit=50, offset=0, source_id=None, since=None, until=None,
+        q=None, sort_by="newest", min_score=None, topics=None,
+        unread_only=False, session=db_session,
+    )
+
+    # The May article was ingested last but must not outrank today's news.
+    assert [it["title"] for it in result["items"]] == ["Today's news", "Week 22 - May 25-29"]
+
+
+@pytest.mark.asyncio
+async def test_display_date_prefers_published_at(db_session):
+    source = await _seed_source(db_session)
+    await _seed_backfilled_story(db_session, source)
+
+    from app.api.stories import list_stories
+
+    result = await list_stories(
+        limit=50, offset=0, source_id=None, since=None, until=None,
+        q=None, sort_by="newest", min_score=None, topics=None,
+        unread_only=False, session=db_session,
+    )
+
+    item = result["items"][0]
+    assert item["display_date"] == "2026-05-25T00:00:00Z"
+
+
+@pytest.mark.asyncio
+async def test_display_date_falls_back_to_first_seen(db_session):
+    source = await _seed_source(db_session)
+    await _seed_stories(db_session, source)  # none carry published_at
+
+    from app.api.stories import list_stories
+
+    result = await list_stories(
+        limit=50, offset=0, source_id=None, since=None, until=None,
+        q=None, sort_by="newest", min_score=None, topics=None,
+        unread_only=False, session=db_session,
+    )
+
+    for item in result["items"]:
+        assert item["display_date"] == item["first_seen_at"]
+
+
 @pytest.mark.asyncio
 async def test_min_score_filter(db_session):
     from app.api.stories import list_stories

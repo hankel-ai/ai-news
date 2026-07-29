@@ -46,21 +46,11 @@ async def fetch_techmeme(config: dict) -> list[Story]:
         if summary_el:
             summary = summary_el.get_text(strip=True)[:300]
 
-        image_url = None
-        img_tag = cluster.find("img", src=True)
-        if img_tag:
-            src = img_tag["src"].strip()
-            if src.startswith("/"):
-                src = f"https://www.techmeme.com{src}"
-            if src.startswith("http"):
-                image_url = src
-
         stories.append(Story(
             title=title,
             url=link,
             source_name="Techmeme",
             summary=summary,
-            image_url=image_url,
         ))
 
         if len(stories) >= max_stories:

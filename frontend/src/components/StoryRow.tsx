@@ -75,7 +75,7 @@ export default function StoryRow({ story, expanded, onToggle }: StoryRowProps) {
           {sourceHostname(story.url)}
         </span>
         <span className="shrink-0 text-xs text-hankel-muted mt-0.5">
-          {timeAgo(story.first_seen_at)}
+          {timeAgo(story.display_date)}
         </span>
         <button
           onClick={handleAnalyze}

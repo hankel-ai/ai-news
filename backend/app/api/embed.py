@@ -1,13 +1,16 @@
 """Minimal SSR endpoint for iframe embedding into hankel.ai."""
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import HTMLResponse
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.engine import get_session
 from app.db.models import Story
 
 router = APIRouter(tags=["embed"])
+
+# Publication time where known, ingestion time otherwise — see api/stories.py.
+_DISPLAY_DATE = func.coalesce(Story.published_at, Story.first_seen_at)
 
 TEMPLATE = """<!DOCTYPE html>
 <html lang="en">
@@ -97,7 +100,7 @@ async def embed_view(
 
     stmt = (
         select(Story)
-        .order_by(Story.first_seen_at.desc())
+        .order_by(_DISPLAY_DATE.desc())
         .limit(limit)
     )
     rows = (await session.execute(stmt)).scalars().all()
@@ -109,7 +112,7 @@ async def embed_view(
         for r in rows:
             source = _escape(r.source_name)
             title = _escape(r.title)
-            ts = r.first_seen_at
+            ts = r.published_at or r.first_seen_at
             time_display = ts[:16].replace("T", " ") if ts else ""
             parts.append(
                 f'<div class="story">'

@@ -16,7 +16,6 @@ from app.db.models import Source, Story as StoryModel
 from app.pipeline.aggregator import resolve_fetcher, source_to_config
 from app.pipeline.persist import save_stories
 from app.utils.dedup import normalize_url
-from app.utils.image_extractor import fetch_images
 
 router = APIRouter(prefix="/api", tags=["sources"])
 
@@ -379,7 +378,6 @@ async def reconcile_import(
             "imported": 0,
         }
 
-    await fetch_images(missing_stories)
     pairs = [(src, s) for s in missing_stories]
     inserted = await save_stories(session, pairs)
     await session.commit()

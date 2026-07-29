@@ -17,7 +17,6 @@ DEFAULTS = {
     "display_group_by_date": "true",
     "display_page_size": "50",
     "timezone": "America/New_York",
-    "hover_preview_enabled": "true",
     # LLM settings
     "llm_provider": "ollama",
     "llm_model": "llama3.2",

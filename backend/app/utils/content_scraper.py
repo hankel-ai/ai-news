@@ -11,6 +11,7 @@ import httpx
 import trafilatura
 
 from app.sources.base import Story
+from app.utils.article_date import published_for
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +32,12 @@ async def fetch_article_content(story: Story, client: httpx.AsyncClient) -> None
         resp.raise_for_status()
         text = await asyncio.to_thread(_extract_text, resp.text)
         story.article_content = text[:_MAX_CONTENT_CHARS] if text else ""
+        # Only fill a gap — feeds already carry an authoritative date, and this
+        # one is inferred. Scrapers (html_links, techmeme, implicator) have none.
+        if story.published is None:
+            story.published = await asyncio.to_thread(
+                published_for, story.url, resp.text
+            )
     except Exception as e:
         logger.debug(f"Content scrape failed for {story.url}: {e}")
 
@@ -45,4 +52,8 @@ async def enrich_stories(stories: list[Story]) -> None:
         tasks = [fetch_article_content(s, client) for s in stories]
         await asyncio.gather(*tasks, return_exceptions=True)
     scraped = sum(1 for s in stories if s.article_content)
-    logger.info(f"Article content scraped: {scraped}/{len(stories)} stories")
+    dated = sum(1 for s in stories if s.published)
+    logger.info(
+        f"Article content scraped: {scraped}/{len(stories)} stories "
+        f"({dated}/{len(stories)} with a publication date)"
+    )

@@ -25,7 +25,6 @@ from app.sources.rss_generic import fetch_rss
 from app.sources.techmeme import fetch_techmeme
 from app.utils.content_scraper import enrich_stories
 from app.utils.dedup import deduplicate
-from app.utils.image_extractor import fetch_images
 
 logger = logging.getLogger(__name__)
 
@@ -160,8 +159,6 @@ async def run_once(
 
     if enrich_content and deduped_stories:
         await enrich_stories(deduped_stories)
-
-    await fetch_images(deduped_stories)
 
     stories_new = 0
     if not dry_run and deduped_pairs:

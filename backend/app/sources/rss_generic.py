@@ -42,38 +42,12 @@ async def fetch_rss(config: dict) -> list[Story]:
                     pass
                 break
 
-        image_url = None
-        for media in entry.get("media_thumbnail", []):
-            if media.get("url"):
-                image_url = media["url"]
-                break
-        if not image_url:
-            for media in entry.get("media_content", []):
-                if media.get("url") and media.get("medium") == "image":
-                    image_url = media["url"]
-                    break
-        if not image_url and entry.get("links"):
-            for lnk in entry["links"]:
-                if lnk.get("type", "").startswith("image/"):
-                    image_url = lnk.get("href")
-                    break
-        if not image_url:
-            for enc in entry.get("enclosures", []):
-                if enc.get("type", "").startswith("image/") and enc.get("href"):
-                    image_url = enc["href"]
-                    break
-        if not image_url and raw_summary:
-            img_tag = BeautifulSoup(raw_summary, "html.parser").find("img", src=True)
-            if img_tag and img_tag["src"].startswith("http"):
-                image_url = img_tag["src"]
-
         stories.append(Story(
             title=title,
             url=link,
             source_name=source_name,
             summary=summary,
             published=published,
-            image_url=image_url,
         ))
 
         if len(stories) >= max_stories:

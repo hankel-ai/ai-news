@@ -24,7 +24,7 @@ function dateLabel(iso: string): string {
 function groupByDate(items: StoryItem[]): [string, StoryItem[]][] {
   const groups = new Map<string, StoryItem[]>();
   for (const item of items) {
-    const label = dateLabel(item.first_seen_at);
+    const label = dateLabel(item.display_date);
     const arr = groups.get(label);
     if (arr) arr.push(item);
     else groups.set(label, [item]);

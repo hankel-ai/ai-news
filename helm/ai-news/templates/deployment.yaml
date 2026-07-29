@@ -38,6 +38,14 @@ spec:
               value: {{ join "," .Values.embed.allowedOrigins | quote }}
             - name: TZ
               value: {{ .Values.timezone | quote }}
+            # glibc gives every mallocing thread its own arena (default cap
+            # 8 x ncores = 128 on a 16-thread node) and never returns a freed
+            # arena to the OS. Each fetch run parses ~50 HTML documents through
+            # lxml across the ~20 asyncio.to_thread workers, so RSS ratcheted to
+            # each run's peak (VmRSS == VmHWM) and OOMKilled the pod on the 5th
+            # run, every ~5h. Capping arenas makes that memory reusable.
+            - name: MALLOC_ARENA_MAX
+              value: {{ .Values.mallocArenaMax | quote }}
             - name: AI_NEWS_LLM_PROVIDER
               value: {{ .Values.llm.provider | quote }}
             - name: AI_NEWS_LLM_MODEL

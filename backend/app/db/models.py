@@ -68,6 +68,23 @@ class Story(Base):
     source: Mapped[Source] = relationship(back_populates="stories")
 
 
+class SeenUrl(Base):
+    """Permanent ledger of every article URL ever ingested.
+
+    Retention prunes `stories` by first_seen_at, but source index pages keep
+    linking the same articles for months (the Claude Code "what's new" page
+    still lists every week back to w13). Without a record that outlives the
+    prune, a deleted story is re-inserted on the next fetch with
+    first_seen_at=now and resurfaces as the newest headline, on a loop every
+    retention_days. Rows are tiny and never pruned — see prune_old().
+    """
+
+    __tablename__ = "seen_urls"
+
+    url_normalized: Mapped[str] = mapped_column(String, primary_key=True)
+    first_seen_at: Mapped[str] = mapped_column(String, nullable=False)
+
+
 class Setting(Base):
     __tablename__ = "settings"
 

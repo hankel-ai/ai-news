@@ -19,6 +19,11 @@ from app.pipeline.analyzer import analyze_stories
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["stories"])
 
+# The date a story is shown and sorted by. first_seen_at is ingestion time, not
+# publication time — dating by it alone makes anything that reaches the DB late
+# (a scraper backfill, a story re-linked from an index page) look brand new.
+_DISPLAY_DATE = func.coalesce(Story.published_at, Story.first_seen_at)
+
 
 @router.get("/stories")
 async def list_stories(
@@ -41,11 +46,11 @@ async def list_stories(
         stmt = stmt.where(Story.source_id == source_id)
         count_stmt = count_stmt.where(Story.source_id == source_id)
     if since:
-        stmt = stmt.where(func.coalesce(Story.published_at, Story.first_seen_at) >= since)
-        count_stmt = count_stmt.where(func.coalesce(Story.published_at, Story.first_seen_at) >= since)
+        stmt = stmt.where(_DISPLAY_DATE >= since)
+        count_stmt = count_stmt.where(_DISPLAY_DATE >= since)
     if until:
-        stmt = stmt.where(func.coalesce(Story.published_at, Story.first_seen_at) <= until)
-        count_stmt = count_stmt.where(func.coalesce(Story.published_at, Story.first_seen_at) <= until)
+        stmt = stmt.where(_DISPLAY_DATE <= until)
+        count_stmt = count_stmt.where(_DISPLAY_DATE <= until)
     if q:
         pattern = f"%{q}%"
         stmt = stmt.where(Story.title.ilike(pattern) | Story.summary.ilike(pattern))
@@ -65,13 +70,13 @@ async def list_stories(
     total = (await session.execute(count_stmt)).scalar_one()
 
     if sort_by == "relevance":
-        stmt = stmt.order_by(Story.relevance_score.desc().nulls_last(), Story.first_seen_at.desc())
+        stmt = stmt.order_by(Story.relevance_score.desc().nulls_last(), _DISPLAY_DATE.desc())
     elif sort_by == "newest":
-        stmt = stmt.order_by(Story.first_seen_at.desc())
+        stmt = stmt.order_by(_DISPLAY_DATE.desc())
     elif sort_by == "source":
         stmt = stmt.order_by(Story.source_name, Story.relevance_score.desc().nulls_last())
     else:
-        stmt = stmt.order_by(Story.first_seen_at.desc())
+        stmt = stmt.order_by(_DISPLAY_DATE.desc())
 
     stmt = stmt.offset(offset).limit(limit)
 
@@ -92,8 +97,8 @@ async def list_stories(
                 "score": r.score,
                 "published_at": r.published_at,
                 "first_seen_at": r.first_seen_at,
+                "display_date": r.published_at or r.first_seen_at,
                 "keywords_matched": r.keywords_matched,
-                "image_url": r.image_url,
                 "viewed_at": r.viewed_at,
                 "ai_summary": r.ai_summary,
                 "relevance_score": r.relevance_score,

@@ -83,11 +83,6 @@ async def _fetch_summary(client: httpx.AsyncClient, story: Story):
         resp = await client.get(story.url, follow_redirects=True, timeout=10)
         if resp.status_code == 200 and "text/html" in resp.headers.get("content-type", ""):
             soup = BeautifulSoup(resp.text, "html.parser")
-            for prop in ("og:image", "twitter:image", "twitter:image:src"):
-                tag = soup.find("meta", attrs={"property": prop}) or soup.find("meta", attrs={"name": prop})
-                if tag and tag.get("content") and tag["content"].strip().startswith("http"):
-                    story.image_url = tag["content"].strip()
-                    break
             meta = soup.find("meta", attrs={"name": "description"})
             if meta and meta.get("content"):
                 story.summary = meta["content"].strip()[:300]

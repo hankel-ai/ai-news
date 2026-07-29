@@ -1,9 +1,7 @@
-import html as html_mod
 import logging
 from datetime import datetime, timezone
 
 import httpx
-from bs4 import BeautifulSoup
 
 from .base import Story
 
@@ -45,27 +43,6 @@ async def fetch_reddit(config: dict) -> list[Story]:
             post_url = post.get("url", f"https://reddit.com{post.get('permalink', '')}")
             summary = ""
 
-        thumb = post.get("thumbnail", "")
-        image_url = thumb if thumb.startswith("http") else None
-        if not image_url:
-            preview = post.get("preview", {})
-            images = preview.get("images", [])
-            if images:
-                image_url = images[0].get("source", {}).get("url")
-        if image_url:
-            image_url = html_mod.unescape(image_url)
-
-        if not image_url and post.get("is_self"):
-            selftext_html = post.get("selftext_html") or ""
-            if selftext_html:
-                selftext_html = html_mod.unescape(selftext_html)
-                soup = BeautifulSoup(selftext_html, "html.parser")
-                for img_tag in soup.find_all("img", src=True, limit=5):
-                    src = img_tag["src"].strip()
-                    if src.startswith("http") and "emoji" not in src.lower():
-                        image_url = src
-                        break
-
         stories.append(Story(
             title=title,
             url=post_url,
@@ -73,7 +50,6 @@ async def fetch_reddit(config: dict) -> list[Story]:
             summary=summary,
             score=post.get("score"),
             published=datetime.fromtimestamp(post.get("created_utc", 0), tz=timezone.utc),
-            image_url=image_url,
         ))
 
         if len(stories) >= max_stories:

@@ -12,5 +12,4 @@ class Story:
     article_content: str = ""
     score: Optional[int] = None
     published: Optional[datetime] = None
-    image_url: Optional[str] = None
     keywords_matched: list[str] = field(default_factory=list)

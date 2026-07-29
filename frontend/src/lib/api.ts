@@ -23,8 +23,11 @@ export interface StoryItem {
   score: number | null;
   published_at: string | null;
   first_seen_at: string;
+  /** published_at when the source gave one, first_seen_at otherwise. Always
+   *  date stories by this — first_seen_at is ingestion time, so a backfilled
+   *  or re-linked article would otherwise read as breaking news. */
+  display_date: string;
   keywords_matched: string | null;
-  image_url: string | null;
   viewed_at: string | null;
   ai_summary: string | null;
   relevance_score: number | null;
@@ -63,7 +66,6 @@ export interface SettingsMap {
   display_group_by_date: boolean;
   display_page_size: number;
   timezone: string;
-  hover_preview_enabled: boolean;
   [key: string]: unknown;
 }
 
