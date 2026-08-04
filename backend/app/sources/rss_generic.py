@@ -1,6 +1,6 @@
+import calendar
 import logging
 from datetime import datetime, timezone
-from time import mktime
 
 import feedparser
 import httpx
@@ -37,7 +37,11 @@ async def fetch_rss(config: dict) -> list[Story]:
             parsed = entry.get(date_field)
             if parsed:
                 try:
-                    published = datetime.fromtimestamp(mktime(parsed), tz=timezone.utc)
+                    # feedparser normalises *_parsed to UTC, so the struct_time
+                    # must be read as UTC. time.mktime() would read it as local
+                    # time and the pod runs TZ=America/New_York, which shifted
+                    # every story five hours into the future.
+                    published = datetime.fromtimestamp(calendar.timegm(parsed), tz=timezone.utc)
                 except Exception:
                     pass
                 break
