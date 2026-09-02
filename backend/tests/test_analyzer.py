@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, Asyn
 from app.db.models import Base, Story, Source
 from app.llm.base import LLMProvider
 from app.pipeline.analyzer import analyze_stories, SYSTEM_PROMPT
+from app.utils.content_scraper import enrich_stories
 
 
 class MockProvider(LLMProvider):
@@ -68,3 +69,44 @@ def test_system_prompt_requests_json():
     assert "summary" in SYSTEM_PROMPT
     assert "score" in SYSTEM_PROMPT
     assert "topics" in SYSTEM_PROMPT
+
+
+@pytest.mark.asyncio
+async def test_analyze_batch_enriches_orm_stories_without_content(db_session):
+    """ORM Story rows (no .published attr) must not crash enrich_stories.
+
+    Regression: the backlog drain feeds old ORM rows with empty summary AND
+    empty article_content into _analyze_batch → enrich_stories() touched
+    .published (a dataclass-field) → AttributeError, recorded as an LLM outage.
+    """
+    from unittest.mock import patch
+
+    source = Source(
+        key="test", name="Test", type="rss", url="http://test.com",
+        enabled=1, created_at=_now_iso(), updated_at=_now_iso(),
+    )
+    db_session.add(source)
+    await db_session.flush()
+
+    story = Story(
+        source_id=source.id, title="No content story", url="http://test.com/none",
+        url_normalized="test.com/none", source_name="Test",
+        summary=None, article_content=None,
+        first_seen_at=_now_iso(),
+    )
+    db_session.add(story)
+    await db_session.flush()
+
+    mock_response = {
+        "stories": [{"id": story.id, "summary": "Recovered summary.", "score": 50, "topics": ["product"]}],
+    }
+    provider = MockProvider(mock_response)
+
+    with patch("app.pipeline.analyzer.enrich_stories", wraps=enrich_stories) as spy:
+        await analyze_stories(db_session, [story.id], provider)
+
+    await db_session.refresh(story)
+    assert story.ai_summary == "Recovered summary."
+    assert story.analyzed_at is not None
+    # enrich ran against the content-less story without raising
+    spy.assert_called_once()

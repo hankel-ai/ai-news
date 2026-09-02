@@ -70,7 +70,28 @@ async def _analyze_batch(
     # "No content provided" or drops them entirely. Backfill via trafilatura.
     needs_content = [s for s in batch if not (s.article_content or s.summary)]
     if needs_content:
-        await enrich_stories(needs_content)
+        # enrich_stories() works on sources.base.Story dataclasses (it reads/writes
+        # .published, .article_content); batch holds ORM rows (.published_at).
+        # Bridge through proxies and copy the scraped content back.
+        from app.sources.base import Story as DataclassStory
+
+        class _Proxy(DataclassStory):
+            def __init__(self, orm: Story):
+                self.orm = orm
+                super().__init__(
+                    title=orm.title or "",
+                    url=orm.url,
+                    source_name=orm.source_name or "",
+                    summary=orm.summary or "",
+                    article_content=orm.article_content or "",
+                    published=None,
+                )
+
+        proxies = [_Proxy(s) for s in needs_content]
+        await enrich_stories(proxies)
+        for proxy in proxies:
+            if proxy.article_content and not proxy.orm.article_content:
+                proxy.orm.article_content = proxy.article_content
 
     stories_input = []
     for s in batch:
