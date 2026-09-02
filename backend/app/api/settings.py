@@ -10,6 +10,9 @@ from app.scheduler import reschedule_from_db
 
 router = APIRouter(prefix="/api", tags=["settings"])
 
+# Internal state managed by the pipeline — never writable via the (public) settings API.
+PROTECTED_KEYS = {"llm_outage_state"}
+
 DEFAULTS = {
     "fetch_interval_minutes": "60",
     "retention_days": "30",
@@ -54,6 +57,12 @@ async def get_settings(session: AsyncSession = Depends(get_session)):
 
 @router.put("/settings")
 async def update_settings(body: dict, session: AsyncSession = Depends(get_session)):
+    forbidden = PROTECTED_KEYS & body.keys()
+    if forbidden:
+        from fastapi import HTTPException
+
+        raise HTTPException(status_code=403, detail=f"read-only setting(s): {', '.join(sorted(forbidden))}")
+
     needs_reschedule = False
     for key, value in body.items():
         str_val = json.dumps(value) if isinstance(value, (dict, list)) else str(value)

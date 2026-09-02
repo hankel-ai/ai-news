@@ -11,6 +11,8 @@ from app.db.models import Setting, Story
 from app.llm import get_provider
 from app.pipeline.aggregator import run_once
 from app.pipeline.analyzer import analyze_stories
+from app.pipeline.llm_state import get_outage_state, clear_outage
+from app.scheduler import _fetch_job_settings
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +25,12 @@ async def trigger_fetch(
     dry_run: bool = Query(False),
     session: AsyncSession = Depends(get_session),
 ):
-    run = await run_once(session, only_source_id=source_id, dry_run=dry_run)
+    run = await run_once(
+        session,
+        only_source_id=source_id,
+        dry_run=dry_run,
+        **await _fetch_job_settings(session),
+    )
     return {
         "id": run.id,
         "started_at": run.started_at,
@@ -72,6 +79,31 @@ async def _list_ollama_models(base_url: str) -> list[str] | None:
             return [m.get("name") for m in r.json().get("models", []) if m.get("name")]
     except Exception:
         return None
+
+
+@router.get("/llm/status")
+async def llm_status(session: AsyncSession = Depends(get_session)):
+    """LLM outage state for the frontend banner. No LLM call — reads the persisted state row."""
+    state = await get_outage_state(session)
+    analysis_raw = await _get_setting(session, "analysis_enabled", "true")
+    analysis_enabled = analysis_raw.strip().lower() in ("true", "1", "yes")
+    if state is None:
+        return {
+            "outage": False,
+            "since": None,
+            "reason": None,
+            "last_probe_at": None,
+            "skipped_runs": 0,
+            "analysis_enabled": analysis_enabled,
+        }
+    return {
+        "outage": True,
+        "since": state.get("since"),
+        "reason": state.get("reason"),
+        "last_probe_at": state.get("last_probe_at"),
+        "skipped_runs": state.get("skipped_runs", 0),
+        "analysis_enabled": analysis_enabled,
+    }
 
 
 @router.post("/llm/ping")
@@ -134,6 +166,12 @@ async def llm_ping(session: AsyncSession = Depends(get_session)):
     result["ok"] = True
     result["duration_ms"] = int((time.monotonic() - t0) * 1000)
     result["reply"] = reply.strip()[:200]
+    # A successful live call contradicts any recorded outage — clear it (banner's "Check now").
+    state = await get_outage_state(session)
+    if state is not None:
+        await clear_outage(session)
+        await session.commit()
+        result["outage_cleared"] = True
     return result
 
 

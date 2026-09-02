@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { api, type StoryItem, type SettingsMap } from "../lib/api";
 import StoryRow from "../components/StoryRow";
 import FilterBar from "../components/FilterBar";
+import OutageBanner from "../components/OutageBanner";
 
 function dateLabel(iso: string): string {
   const d = new Date(iso);
@@ -74,6 +75,13 @@ export default function HeadlinesPage() {
     queryFn: api.getSettings,
   });
 
+  // LLM outage banner — cheap status read, polled so it clears within a minute of recovery.
+  const llmStatusQ = useQuery({
+    queryKey: ["llmStatus"],
+    queryFn: api.getLlmStatus,
+    refetchInterval: 60_000,
+  });
+
   // Mutations
   const fetchMut = useMutation({
     mutationFn: () => api.triggerFetch(),
@@ -126,6 +134,9 @@ export default function HeadlinesPage() {
 
   return (
     <div>
+      {/* LLM outage banner */}
+      {llmStatusQ.data?.outage && <OutageBanner status={llmStatusQ.data} />}
+
       {/* Header bar */}
       <div className="flex items-center gap-3 mb-4">
         <button

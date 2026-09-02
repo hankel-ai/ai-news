@@ -26,33 +26,33 @@ async def _get_setting(session: AsyncSession, key: str, default: str) -> str:
     return row if row is not None else default
 
 
+async def _fetch_job_settings(session: AsyncSession) -> dict:
+    """Read the settings that parameterize run_once. Shared by the scheduled job
+    and the manual /api/fetch endpoint so both behave identically."""
+    enrich_raw = await _get_setting(session, "enrich_content", "false")
+    enrich = enrich_raw.strip().lower() in ("true", "1", "yes")
+    retention_raw = await _get_setting(session, "retention_days", "30")
+    try:
+        retention = int(retention_raw)
+    except ValueError:
+        retention = 30
+
+    analysis_raw = await _get_setting(session, "analysis_enabled", "true")
+    analysis_enabled = analysis_raw.strip().lower() in ("true", "1", "yes")
+    return {
+        "enrich_content": enrich,
+        "retention_days": retention,
+        "analysis_enabled": analysis_enabled,
+        "llm_provider": await _get_setting(session, "llm_provider", "ollama"),
+        "llm_model": await _get_setting(session, "llm_model", "llama3.2"),
+        "llm_base_url": await _get_setting(session, "llm_base_url", ""),
+        "llm_api_key": await _get_setting(session, "llm_api_key", ""),
+    }
+
+
 async def _run_fetch_job() -> None:
     async with SessionLocal() as session:
-        enrich_raw = await _get_setting(session, "enrich_content", "false")
-        enrich = enrich_raw.strip().lower() in ("true", "1", "yes")
-        retention_raw = await _get_setting(session, "retention_days", "30")
-        try:
-            retention = int(retention_raw)
-        except ValueError:
-            retention = 30
-
-        analysis_raw = await _get_setting(session, "analysis_enabled", "true")
-        analysis_enabled = analysis_raw.strip().lower() in ("true", "1", "yes")
-        llm_provider = await _get_setting(session, "llm_provider", "ollama")
-        llm_model = await _get_setting(session, "llm_model", "llama3.2")
-        llm_base_url = await _get_setting(session, "llm_base_url", "")
-        llm_api_key = await _get_setting(session, "llm_api_key", "")
-
-        await run_once(
-            session,
-            enrich_content=enrich,
-            retention_days=retention,
-            analysis_enabled=analysis_enabled,
-            llm_provider=llm_provider,
-            llm_model=llm_model,
-            llm_base_url=llm_base_url,
-            llm_api_key=llm_api_key,
-        )
+        await run_once(session, **await _fetch_job_settings(session))
 
 
 def init_scheduler() -> AsyncIOScheduler:

@@ -109,9 +109,19 @@ export interface ReconcileResult {
   missing: { title: string; url: string }[];
 }
 
+export interface LlmStatus {
+  outage: boolean;
+  since: string | null;
+  reason: string | null;
+  last_probe_at: string | null;
+  skipped_runs: number;
+  analysis_enabled: boolean;
+}
+
 export const api = {
   getStories: (params?: string) =>
     request<StoriesResponse>(`/api/stories${params ? `?${params}` : ""}`),
+  getLlmStatus: () => request<LlmStatus>("/api/llm/status"),
   getSources: () => request<{ items: SourceItem[] }>("/api/sources"),
   createSource: (body: Partial<SourceItem>) =>
     request<SourceItem>("/api/sources", { method: "POST", body: JSON.stringify(body) }),

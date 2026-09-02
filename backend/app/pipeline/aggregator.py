@@ -12,8 +12,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import FetchRun, Source, Story as StoryModel
 from app.llm import get_provider
+from app.llm.probe import check_llm as probe_llm
 from app.pipeline.analyzer import analyze_stories
 from app.pipeline.health_writer import record_health
+from app.pipeline.llm_state import get_outage_state, record_outage, record_probe, clear_outage
 from app.pipeline.persist import prune_old, save_stories
 from app.sources.base import Story
 from app.sources.claude_blog import fetch_claude_blog
@@ -74,6 +76,56 @@ def resolve_fetcher(src: Source):
     if src.type == "html_scraper":
         return HTML_SCRAPERS.get(src.key)
     return FETCHERS.get(src.type)
+
+
+# While the LLM outage is active, scheduled runs probe at most this often.
+PROBE_INTERVAL_S = 3600
+
+# Max unanalyzed stories drained per run once the LLM is back (also caps the
+# healthy path — a backlog only exists after an outage or manual backfill).
+BACKLOG_LIMIT = 200
+
+
+async def _should_run_analysis(
+    session: AsyncSession,
+    *,
+    llm_provider: str,
+    llm_model: str,
+    llm_base_url: str,
+    llm_api_key: str,
+) -> tuple[bool, str | None]:
+    """Outage gate. Returns (allowed, skip_reason).
+
+    Healthy path → (True, None). Outage active → probe (rate-limited to once
+    per PROBE_INTERVAL_S): probe ok clears the outage and allows the run;
+    probe failed skips analysis this run and bumps skipped_runs.
+    """
+    state = await get_outage_state(session)
+    if state is None:
+        return True, None
+
+    last_probe = state.get("last_probe_at")
+    if last_probe:
+        try:
+            elapsed = (
+                datetime.now(timezone.utc)
+                - datetime.strptime(last_probe, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+            ).total_seconds()
+            if elapsed < PROBE_INTERVAL_S:
+                return False, f"probe rate-limited ({int(PROBE_INTERVAL_S - elapsed)}s left)"
+        except ValueError:
+            pass  # corrupt timestamp — probe anyway
+
+    ok, reason = await probe_llm(
+        provider=llm_provider, model=llm_model,
+        base_url=llm_base_url, api_key=llm_api_key,
+    )
+    if ok:
+        await clear_outage(session)
+        logger.info("LLM recovered — clearing outage, draining analysis backlog")
+        return True, None
+    await record_probe(session, ok=False)
+    return False, reason
 
 
 async def _timed_fetch(src: Source, coro):
@@ -164,24 +216,39 @@ async def run_once(
     if not dry_run and deduped_pairs:
         stories_new = await save_stories(session, deduped_pairs)
 
-    if analysis_enabled and stories_new > 0:
+    if analysis_enabled:
         try:
-            provider = get_provider(
-                provider_name=llm_provider, model=llm_model,
-                base_url=llm_base_url, api_key=llm_api_key,
+            allowed, skip_reason = await _should_run_analysis(
+                session,
+                llm_provider=llm_provider, llm_model=llm_model,
+                llm_base_url=llm_base_url, llm_api_key=llm_api_key,
             )
-            unanalyzed = await session.execute(
-                select(StoryModel.id).where(
-                    StoryModel.analyzed_at.is_(None),
-                    StoryModel.first_seen_at >= run.started_at,
+            if not allowed:
+                logger.warning("LLM analysis skipped this run: %s", skip_reason)
+            else:
+                # Drain the backlog (capped), not just this run's stories — after an
+                # outage the skipped stories would otherwise stay unanalyzed forever.
+                unanalyzed = await session.execute(
+                    select(StoryModel.id)
+                    .where(StoryModel.analyzed_at.is_(None))
+                    .order_by(StoryModel.first_seen_at.asc())
+                    .limit(BACKLOG_LIMIT)
                 )
-            )
-            new_ids = [row[0] for row in unanalyzed.fetchall()]
-            if new_ids:
-                await analyze_stories(session, new_ids, provider)
-                await session.commit()
-        except Exception:
+                new_ids = [row[0] for row in unanalyzed.fetchall()]
+                if new_ids:
+                    provider = get_provider(
+                        provider_name=llm_provider, model=llm_model,
+                        base_url=llm_base_url, api_key=llm_api_key,
+                    )
+                    await analyze_stories(session, new_ids, provider)
+                    await session.commit()
+                    await clear_outage(session)
+        except Exception as e:
             logger.exception("AI analysis failed — stories saved without analysis")
+            await record_outage(
+                session, reason=f"{type(e).__name__}: {e}"
+            )
+            await session.commit()
 
     if retention_days is not None and not dry_run:
         await prune_old(session, retention_days)
