@@ -10,6 +10,12 @@ RUN mkdir -p /build/backend/app/static && npm run build
 FROM python:3.11-slim
 WORKDIR /app
 
+# CVE hygiene: pull patched Debian packages (the slim base lags point releases) and
+# refresh the pip toolchain; setuptools vendors jaraco.context, wheel is flagged on its own.
+RUN apt-get update && apt-get upgrade -y --no-install-recommends \
+    && rm -rf /var/lib/apt/lists/* \
+    && pip install --no-cache-dir --upgrade pip setuptools wheel
+
 RUN groupadd -r appuser && useradd -r -g appuser -d /app appuser \
     && mkdir -p /data && chown appuser:appuser /data
 
