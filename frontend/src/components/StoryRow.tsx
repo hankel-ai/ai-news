@@ -4,6 +4,7 @@ import { api, type StoryItem } from "../lib/api";
 
 function timeAgo(iso: string): string {
   const ms = Date.now() - new Date(iso).getTime();
+  if (ms < 0) return "just now";
   const mins = Math.floor(ms / 60000);
   if (mins < 60) return `${mins}m ago`;
   const hrs = Math.floor(mins / 60);
