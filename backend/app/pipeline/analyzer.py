@@ -16,7 +16,8 @@ def _strip_code_fence(raw: str) -> str:
     """Return the JSON inside a Markdown code fence, or `raw` unchanged.
 
     Claude models (e.g. claude-haiku-4-5 via LiteLLM) wrap JSON replies in a
-    ```json ... ``` fence even when told to return only JSON.
+    ```json ... ``` fence even when told to return only JSON. Unfenced replies
+    pass through unchanged, so Ollama/other providers are unaffected.
     """
     text = raw.strip()
     if not text.startswith("```"):
