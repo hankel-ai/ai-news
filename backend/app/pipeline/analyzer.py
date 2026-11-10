@@ -11,6 +11,24 @@ from app.utils.content_scraper import enrich_stories
 
 logger = logging.getLogger(__name__)
 
+
+def _strip_code_fence(raw: str) -> str:
+    """Return the JSON inside a Markdown code fence, or `raw` unchanged.
+
+    Claude models (e.g. claude-haiku-4-5 via LiteLLM) wrap JSON replies in a
+    ```json ... ``` fence even when told to return only JSON.
+    """
+    text = raw.strip()
+    if not text.startswith("```"):
+        return text
+    first_newline = text.find("\n")
+    if first_newline == -1:
+        return text
+    body = text[first_newline + 1:]
+    if body.rstrip().endswith("```"):
+        body = body.rstrip()[:-3]
+    return body.strip()
+
 TOPIC_VOCABULARY = [
     "llm-release", "funding", "research", "open-source", "regulation",
     "tutorial", "infrastructure", "product", "acquisition", "policy",
@@ -107,7 +125,7 @@ async def _analyze_batch(
     raw = await provider.complete(prompt, system=SYSTEM_PROMPT)
 
     try:
-        data = json.loads(raw)
+        data = json.loads(_strip_code_fence(raw))
     except json.JSONDecodeError:
         logger.error("LLM returned invalid JSON: %s", raw[:500])
         return

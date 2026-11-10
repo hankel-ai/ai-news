@@ -134,8 +134,9 @@ export default function HeadlinesPage() {
 
   return (
     <div>
-      {/* LLM outage banner */}
-      {llmStatusQ.data?.outage && <OutageBanner status={llmStatusQ.data} />}
+      {/* LLM outage banner. Hidden while analysis is off: nothing probes then, so the
+          stored outage row would never clear. */}
+      {llmStatusQ.data?.outage && llmStatusQ.data.analysis_enabled && <OutageBanner status={llmStatusQ.data} />}
 
       {/* Header bar */}
       <div className="flex items-center gap-3 mb-4">

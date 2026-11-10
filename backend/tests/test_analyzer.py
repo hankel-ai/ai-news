@@ -110,3 +110,39 @@ async def test_analyze_batch_enriches_orm_stories_without_content(db_session):
     assert story.analyzed_at is not None
     # enrich ran against the content-less story without raising
     spy.assert_called_once()
+
+
+class FencedProvider(LLMProvider):
+    """Replies the way claude-haiku-4-5 does: JSON wrapped in a ```json fence."""
+
+    def __init__(self, response: dict):
+        self._response = response
+
+    async def complete(self, prompt: str, system: str = "") -> str:
+        return "```json\n" + json.dumps(self._response, indent=2) + "\n```"
+
+
+@pytest.mark.asyncio
+async def test_analyze_stories_accepts_code_fenced_json(db_session):
+    source = Source(
+        key="test", name="Test", type="rss", url="http://test.com",
+        enabled=1, created_at=_now_iso(), updated_at=_now_iso(),
+    )
+    db_session.add(source)
+    await db_session.flush()
+    story = Story(
+        source_id=source.id, title="Claude 4 Released", url="http://test.com/1",
+        url_normalized="test.com/1", source_name="Test", summary="Big release",
+        first_seen_at=_now_iso(),
+    )
+    db_session.add(story)
+    await db_session.flush()
+
+    provider = FencedProvider({
+        "stories": [{"id": story.id, "summary": "Anthropic releases Claude 4.", "score": 88, "topics": ["llm-release"]}],
+    })
+    await analyze_stories(db_session, [story.id], provider)
+
+    await db_session.refresh(story)
+    assert story.relevance_score == 88
+    assert story.ai_summary == "Anthropic releases Claude 4."
